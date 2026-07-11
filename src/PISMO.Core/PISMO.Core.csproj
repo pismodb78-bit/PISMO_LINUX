@@ -12,6 +12,9 @@
   <ItemGroup>
     <!-- Кроссплатформенный клиент MySQL — работает на Linux/macOS/Windows -->
     <PackageReference Include="MySql.Data" Version="9.1.0" />
+    <!-- Чистый C# WebRTC (DTLS/ICE/SRTP), кроссплатформенный. Тот же движок,
+         что и в Windows-версии (CallTransport.cs). Совместим с браузерным WebRTC. -->
+    <PackageReference Include="SIPSorcery" Version="8.0.14" />
   </ItemGroup>
 
 </Project>

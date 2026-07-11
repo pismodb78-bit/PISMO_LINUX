@@ -1,75 +1,50 @@
 using System;
-using System.Threading.Tasks;
 
 namespace PISMO.Platform
 {
     /// <summary>
-    /// Абстракция WebRTC-движка звонков. В Windows-версии реализована поверх
-    /// WebView2 (JavaScript RTCPeerConnection). Кроссплатформенная реализация
-    /// использует Chromium Embedded Framework (CEF) — тот же браузерный движок и
-    /// тот же JS-код звонка, поэтому аудио/видео/экран/камера сохраняются 1:1.
+    /// Потоковый ввод/вывод звука для звонков. Формат жёстко зафиксирован
+    /// совместимо с Windows-версией (CallForm): <b>PCM 16-bit, 16 кГц, моно (S16LE)</b>.
+    /// Микрофон отдаётся кадрами через <see cref="SamplesCaptured"/>, входящий звук
+    /// собеседника проигрывается через <see cref="PlaySamples"/>.
     ///
-    /// Реализация подключается на этапе портирования звонков (docs/ROADMAP.md).
-    /// UI-код (окно звонка) работает только с этим интерфейсом и не зависит от
-    /// того, какой браузерный движок используется под капотом.
+    /// Реализация выбирается по платформе:
+    ///  • Linux  — ALSA (<c>arecord</c>/<c>aplay</c>), см. AlsaAudioDevice;
+    ///  • Windows — NAudio (как в оригинале), может быть добавлена позже.
     /// </summary>
-    public interface ICallEngine : IDisposable
+    public interface IAudioDevice : IDisposable
     {
-        event Action Connected;
-        event Action Disconnected;
-        event Action<byte, byte[]> FrameReceived;           // тип потока + данные
-        event Action<string> IceCandidateReady;
-        event Action GatheringComplete;
+        /// <summary>Формат PCM, ожидаемый обеими сторонами звонка.</summary>
+        public const int SampleRate = 16000;
+        public const int Channels = 1;
+        public const int BitsPerSample = 16;
 
-        event Action<byte[]> LocalCameraFrameReceived;
-        event Action<byte[]> RemoteCameraFrameReceived;
-        event Action<byte[]> RemoteScreenFrameReceived;
+        /// <summary>Захвачен кадр PCM с микрофона (готов к отправке собеседнику).</summary>
+        event Action<byte[]> SamplesCaptured;
 
-        Task InitializeAsync(string iceConfigJson);
-        Task CreateOfferAsync();
-        Task AcceptOfferAsync(string sdp);
-        Task ApplyAnswerAsync(string sdp);
-        Task AddIceCandidateAsync(string candidateJson);
+        void StartCapture();
+        void StopCapture();
 
-        Task SetMicrophoneEnabledAsync(bool enabled);
-        Task SetCameraEnabledAsync(bool enabled);
-        Task StartScreenShareAsync();
-        Task StopScreenShareAsync();
+        void StartPlayback();
+        void PlaySamples(byte[] pcm);
+        void StopPlayback();
 
-        void Hangup();
-    }
-
-    /// <summary>Устройство ввода/вывода звука (для записи голосовых и кружков).</summary>
-    public interface IAudioDevice
-    {
-        void StartRecording();
-        byte[] StopRecording();               // WAV/PCM буфер
-        void Play(byte[] audio);
-        void Stop();
-    }
-
-    /// <summary>Захват кадров с камеры (для превью и записи видео-кружков).</summary>
-    public interface ICameraDevice : IDisposable
-    {
-        event Action<byte[]> FrameReady;      // JPEG-кадр
-        void Start(int deviceIndex = 0);
-        void Stop();
+        /// <summary>Заглушить микрофон (кадры перестают отдаваться в SamplesCaptured).</summary>
+        bool Muted { get; set; }
     }
 
     /// <summary>
-    /// Фабрика платформенных сервисов. Конкретные реализации регистрируются
-    /// desktop-проектом при старте (Windows: WebView2/NAudio/AForge;
-    /// Linux: CEF/PortAudio-или-FFmpeg/V4L2). Пока реализации нет — свойства null,
-    /// и UI показывает звонки/кружки как «в разработке», не падая.
+    /// Фабрика платформенных сервисов. Desktop-проект регистрирует реализацию при
+    /// старте (на Linux — AlsaAudioDevice). Если аудио недоступно — фабрика null,
+    /// и окно звонка честно сообщает об этом, не падая.
     /// </summary>
     public static class PlatformServices
     {
-        public static Func<ICallEngine> CallEngineFactory { get; set; }
         public static Func<IAudioDevice> AudioDeviceFactory { get; set; }
-        public static Func<ICameraDevice> CameraDeviceFactory { get; set; }
 
-        public static bool CallsAvailable => CallEngineFactory != null;
         public static bool AudioAvailable => AudioDeviceFactory != null;
-        public static bool CameraAvailable => CameraDeviceFactory != null;
+
+        public static IAudioDevice CreateAudioDevice()
+            => AudioDeviceFactory?.Invoke();
     }
 }

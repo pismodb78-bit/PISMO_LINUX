@@ -17,6 +17,12 @@ namespace PISMO
                 // Загружаем настройки TURN один раз при старте (как в Windows-версии).
                 TurnSettings.Load();
 
+                // Регистрируем платформенное аудио для звонков.
+                // Linux — ALSA (arecord/aplay). Другие ОС можно добавить позже.
+                if (OperatingSystem.IsLinux())
+                    PISMO.Platform.PlatformServices.AudioDeviceFactory =
+                        () => new PISMO.Platform.AlsaAudioDevice();
+
                 // Приложение живёт, пока открыто хотя бы одно окно; при выходе из
                 // аккаунта MainWindow закрывается и снова показывается LoginWindow.
                 desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;

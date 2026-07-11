@@ -24,6 +24,11 @@ namespace PISMO.Views
         private int _lastTotalCount = -1;
         private readonly DispatcherTimer _pollTimer;
 
+        // Звонки
+        private int _lastCheckedCallId = 0;
+        private bool _incomingOpen;
+        private CallWindow _activeCall;
+
         // Палитра аватарок (детерминированно по id пользователя).
         private static readonly Color[] AvatarColors =
         {
@@ -47,8 +52,8 @@ namespace PISMO.Views
             BtnAttachCancel.Click += (_, _) => ClearAttachment();
             BtnNewGroup.Click += async (_, _) =>
                 await Dialogs.Info(this, "Групповые чаты переносятся на следующем этапе (см. docs/ROADMAP.md).");
-            BtnAudioCall.Click += async (_, _) => await CallsComingSoon();
-            BtnVideoCall.Click += async (_, _) => await CallsComingSoon();
+            BtnAudioCall.Click += (_, _) => StartOutgoingCall(false);
+            BtnVideoCall.Click += (_, _) => StartOutgoingCall(true);
 
             TxtMessage.KeyDown += (_, e) =>
             {
@@ -377,6 +382,7 @@ namespace PISMO.Views
         // ─────────────── Поллинг ───────────────
         private void PollTick()
         {
+            CheckIncomingCalls();
             try
             {
                 int total = SafeTotalCount();
@@ -408,14 +414,76 @@ namespace PISMO.Views
             Close(); // LoginWindow снова покажется (см. LoginWindow.BtnLogin_Click)
         }
 
-        private async System.Threading.Tasks.Task CallsComingSoon()
+        // ─────────────── Звонки ───────────────
+        private async void StartOutgoingCall(bool withVideo)
         {
-            if (PISMO.Platform.PlatformServices.CallsAvailable)
-                return; // когда движок звонков подключён — здесь откроется окно звонка
-            await Dialogs.Info(this,
-                "Модуль звонков (аудио/видео/демонстрация экрана) переносится на Linux через " +
-                "браузерный движок CEF — тот же WebRTC, что и в Windows-версии.\n\n" +
-                "Подробности и статус — docs/ROADMAP.md.", "Звонки — на подходе");
+            if (_currentPartnerId < 0) return;
+            if (_activeCall != null) { _activeCall.Activate(); return; }
+
+            if (!PISMO.Platform.PlatformServices.AudioAvailable)
+            {
+                await Dialogs.Info(this,
+                    "Аудио для звонков доступно на Linux через ALSA (пакет alsa-utils). " +
+                    "На этой системе устройство аудио не зарегистрировано.", "Звонки");
+                return;
+            }
+
+            if (withVideo)
+                await Dialogs.Info(this,
+                    "Пока доступны голосовые звонки. Видео и демонстрация экрана — " +
+                    "следующий этап (docs/ROADMAP.md). Звоним с голосом.", "Звонки");
+
+            try
+            {
+                int myId = UserSession.EffectiveId;
+                int sid = CallSignaling.FindActiveSession(myId, _currentPartnerId);
+                bool caller = sid <= 0;
+                if (caller)
+                    sid = CallSignaling.CreateCall(myId, _currentPartnerId, withVideo);
+                OpenCallWindow(sid, caller, _currentPartnerName);
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.Error(this, "Не удалось начать звонок: " + ex.Message);
+            }
+        }
+
+        private void CheckIncomingCalls()
+        {
+            if (_activeCall != null || _incomingOpen) return;
+            if (!PISMO.Platform.PlatformServices.AudioAvailable) return;
+
+            try
+            {
+                var incoming = CallSignaling.CheckIncoming(UserSession.EffectiveId, _lastCheckedCallId);
+                foreach (var call in incoming)
+                {
+                    _lastCheckedCallId = Math.Max(_lastCheckedCallId, call.SessionId);
+                    ShowIncoming(call);
+                    break; // по одному за раз
+                }
+            }
+            catch { /* опрос не должен ронять UI */ }
+        }
+
+        private async void ShowIncoming(CallSignaling.Incoming call)
+        {
+            _incomingOpen = true;
+            var dlg = new IncomingCallWindow(call.CallerName);
+            await dlg.ShowDialog(this);
+            _incomingOpen = false;
+
+            if (dlg.Accepted)
+                OpenCallWindow(call.SessionId, isCaller: false, call.CallerName);
+            else
+                CallSignaling.RejectCall(call.SessionId);
+        }
+
+        private void OpenCallWindow(int sessionId, bool isCaller, string peerName)
+        {
+            _activeCall = new CallWindow(sessionId, isCaller, peerName);
+            _activeCall.Closed += (_, _) => _activeCall = null;
+            _activeCall.Show();
         }
 
         private static Color AvatarColor(int uid)

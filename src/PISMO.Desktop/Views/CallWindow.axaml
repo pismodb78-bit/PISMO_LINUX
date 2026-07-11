@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PISMO.Views.CallWindow"
+        Title="PISMO — Звонок"
+        Width="420" Height="480"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgChatBrush}">
+
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Stretch"
+                Spacing="20" Margin="30">
+
+        <Border Width="120" Height="120" CornerRadius="60"
+                HorizontalAlignment="Center" x:Name="Avatar"
+                Background="{StaticResource BlurpleBrush}">
+            <TextBlock x:Name="AvatarLetter" Text="?" FontSize="52" FontWeight="Bold"
+                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+
+        <TextBlock x:Name="PeerName" Text="" FontSize="22" FontWeight="Bold"
+                   Foreground="White" HorizontalAlignment="Center" />
+        <TextBlock x:Name="StatusLabel" Text="Соединение…" FontSize="14"
+                   Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Center" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24"
+                    Margin="0,20,0,0">
+            <Button x:Name="BtnMute" Width="64" Height="64" CornerRadius="32"
+                    Background="{StaticResource BgInputBrush}" Foreground="White"
+                    FontSize="24" Cursor="Hand" ToolTip.Tip="Микрофон"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Content="🎤" />
+            <Button x:Name="BtnHangup" Width="64" Height="64" CornerRadius="32"
+                    Background="{StaticResource RedBrush}" Foreground="White"
+                    FontSize="24" Cursor="Hand" ToolTip.Tip="Завершить"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    Content="📵" />
+        </StackPanel>
+    </StackPanel>
+</Window>

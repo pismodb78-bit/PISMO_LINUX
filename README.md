@@ -21,12 +21,15 @@
 - ✅ **Поллинг** новых сообщений в реальном времени (как в Windows-версии)
 - ✅ **Admin-режим**: список всех пользователей и «войти за пользователя» (ПКМ по карточке)
 - ✅ **Настройки**: строка подключения к БД (`ip.txt`) и параметры TURN/STUN
+- ✅ **Голосовые звонки** (аудио) — WebRTC на **SIPSorcery** (чистый C#) + аудио через
+  **ALSA** (`arecord`/`aplay`). Тот же сигналинг через БД (`call_sessions`) и тот же
+  бинарный аудио-протокол (PCM 16кГц/моно), что и в Windows-версии → **Linux ↔ Windows
+  звонки совместимы**. Входящие звонки, приём/отклонение, mute, завершение.
 - ✅ **Discord-тема**: тёмный фон, blurple-кнопки, аватары с буквами, скруглённые пузырьки
 
 ## В работе (следующие этапы, код-«посадочные места» уже готовы)
 
-- 🚧 **Звонки** (аудио/видео/демонстрация экрана) — через браузерный движок **CEF**
-  (тот же WebRTC, что и в Windows-версии на WebView2). Интерфейс `ICallEngine` готов.
+- 🚧 **Видео и демонстрация экрана** в звонках (аудио уже работает)
 - 🚧 **Групповые чаты**
 - 🚧 **Голосовые сообщения** и **видео-кружки** (интерфейсы `IAudioDevice` / `ICameraDevice`)
 - 🚧 **Расширенные сообщения**: файлы, ответы, редактирование/удаление, блокировки (схема v2)
@@ -53,7 +56,7 @@ sudo dnf install dotnet-sdk-8.0
 ### 2. Настроить подключение к MySQL
 
 База та же, что и у Windows-версии (`bdauth`). Если ещё не создавали таблицы —
-выполните `db/pismo_messenger_migration.sql`.
+выполните `db/pismo_messenger_migration.sql`, а для звонков — `db/pismo_calls_migration.sql`.
 
 Отредактируйте `src/PISMO.Desktop/ip.txt`:
 
@@ -82,6 +85,13 @@ dotnet build -c Release
 Avalonia использует X11 (или Wayland через XWayland). На «голом» сервере поставьте
 базовые библиотеки: `libx11`, `libice`, `libsm`, `libfontconfig`, `libicu`.
 На обычном десктопе (CachyOS/Ubuntu с рабочим столом) всё уже есть.
+
+Для **голосовых звонков** нужен пакет **alsa-utils** (утилиты `arecord`/`aplay`):
+
+```bash
+sudo apt-get install -y alsa-utils      # Debian/Ubuntu
+sudo pacman -S alsa-utils               # Arch/CachyOS
+```
 
 ---
 
@@ -118,5 +128,8 @@ PISMO_LINUX/
 | `SettingsForm`                | `Views/SettingsWindow`              |
 | `DBHelper` / `UserSession` / `TurnSettings` | перенесены как есть в `PISMO.Core` |
 | SQL из `MainForm`             | `PISMO.Core/Data/MessageService`    |
-| `WebRtcTransport` (WebView2)  | `ICallEngine` → реализация на CEF (этап 1) |
-| `NAudio` / `AForge`           | `IAudioDevice` / `ICameraDevice` (этап 2)  |
+| `CallTransport` (SIPSorcery)  | перенесён как есть в `PISMO.Core/Call` ✅ |
+| `WebRtcTransport` (WebView2)  | не нужен — звонки идут через SIPSorcery-транспорт |
+| `NAudio` (аудио звонка)       | `IAudioDevice` → `AlsaAudioDevice` (ALSA) ✅ |
+| `AForge` (камера)             | `ICameraDevice` (V4L2/FFmpeg) — этап видео |
+| `CallForm` / `IncomingCallForm` | `Views/CallWindow` / `Views/IncomingCallWindow` ✅ |

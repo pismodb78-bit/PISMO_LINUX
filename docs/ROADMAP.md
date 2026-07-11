@@ -9,10 +9,17 @@ Windows-версия завязана на 4 подсистемы, которы�
 
 | Подсистема | Windows | Замена на Linux | Статус |
 |---|---|---|---|
-| UI | WinForms | **Avalonia UI** (тот же C#, кроссплатформенно) | ✅ ядро готово |
-| Движок звонков | **WebView2** (JS `RTCPeerConnection`) | **CEF** (Chromium Embedded Framework) — тот же браузерный движок, тот же JS-код | 🚧 этап 1 |
-| Аудио (запись/воспроизведение) | **NAudio** | **PortAudio** / **FFmpeg** / OpenAL | 🚧 этап 2 |
-| Камера | **AForge.Video.DirectShow** | **V4L2** (Linux) / SIPSorcery capture | 🚧 этап 2 |
+| UI | WinForms | **Avalonia UI** (тот же C#, кроссплатформенно) | ✅ готово |
+| Транспорт звонка | WebRTC (DataChannel) | **SIPSorcery** (чистый C#) — уже был в Windows-версии (`CallTransport.cs`) | ✅ перенесён |
+| Аудио звонка | **NAudio** | **ALSA** (`arecord`/`aplay`) через `IAudioDevice` | ✅ голос готов |
+| Видео/экран в звонке | WebView2 video-track | SIPSorcery media + V4L2/FFmpeg | 🚧 этап видео |
+| Камера (кружки) | **AForge.Video.DirectShow** | **V4L2** (Linux) / FFmpeg | 🚧 |
+
+> Примечание: изначально планировался CEF (как хост браузерного WebRTC), но
+> оказалось, что аудиозвонок в Windows-версии идёт **не** через медиа-треки
+> WebView2, а бинарными PCM-кадрами по **DataChannel** поверх SIPSorcery
+> (`CallTransport.cs`). Значит браузер не нужен вовсе: SIPSorcery — чистый C#,
+> ставится из NuGet, кроссплатформенный. Это и надёжнее, и легче CEF.
 
 Кроссплатформенное переиспользуется как есть: **MySql.Data**, **SIPSorcery**,
 `DBHelper`, `UserSession`, `TurnSettings`, вся SQL-логика.
@@ -31,34 +38,33 @@ Windows-версия завязана на 4 подсистемы, которы�
 
 ---
 
-## Этап 1 — Звонки (аудио/видео/экран) 🚧
+## Этап 1 — Голосовые звонки ✅ (готово)
 
-Это ключевая фича. В Windows звонок целиком работает **внутри WebView2**: C# отдаёт
-HTML-страницу с `RTCPeerConnection` / `getUserMedia` / `getDisplayMedia`, а обмен
-SDP/ICE идёт через `WebMessageReceived` ↔ `ExecuteScriptAsync`. Сигналинг между
-пользователями — через локальный WebSocket-сервер + запись SDP в БД.
+- [x] Перенос `CallTransport` (SIPSorcery, DataChannel) → `PISMO.Core/Call`
+- [x] Сигналинг через БД `call_sessions` (`CallSignaling`): offer/answer/ICE,
+      статусы, детект входящих — протокол 1:1 с Windows-версией
+- [x] Схема БД звонков — `db/pismo_calls_migration.sql`
+- [x] Аудио на Linux — `AlsaAudioDevice` (ALSA `arecord`/`aplay`, PCM 16кГц/моно)
+- [x] `Views/CallWindow` — исходящий/входящий звонок, mute, завершение
+- [x] `Views/IncomingCallWindow` — приём/отклонение
+- [x] Кнопки 📞/📹 в чате и опрос входящих звонков в `MainWindow`
+- [x] TURN/STUN из окна настроек (`TurnSettings`) прокидываются в ICE-конфиг
 
-**План на Linux — сохранить ровно тот же JS-движок, заменив только хост браузера:**
+**Нужно проверить на реальных устройствах** (в этом окружении нет 2 пиров и
+микрофона): установить `alsa-utils`, выполнить обе миграции БД, запустить на двух
+машинах в одной сети/через TURN и позвонить. Формат аудио и сигналинг совместимы
+с Windows-клиентами.
 
-1. Подключить кроссплатформенный CEF-контрол для Avalonia:
-   - [`CefNet`](https://github.com/CefNet/CefNet) или
-     [`WebViewControl-Avalonia`](https://github.com/OutSystems/WebView) (CEF под капотом).
-2. Реализовать `PISMO.Platform.ICallEngine` поверх CEF:
-   - загрузка того же HTML (перенести `BuildHtml()` из `WebRtcTransport.cs`);
-   - мост C# ↔ JS (`CefV8` / `PostMessage`) вместо `CoreWebView2.WebMessageReceived`;
-   - выдача разрешений камера/микрофон (в CEF — через `OnRequestMediaAccessPermission`).
-3. Перенести сигналинг:
-   - `WebSocketSignalingServer` / `WebSocketSignalingClient` (чистый C#, `System.Net.WebSockets` — переносятся почти как есть);
-   - хранение/обмен offer/answer/ICE через БД (`CallSessionInfo`, таблицы звонков).
-4. Перенести UI звонка `CallForm` → `Views/CallWindow` (Avalonia).
-5. Зарегистрировать фабрику: `PlatformServices.CallEngineFactory = () => new CefCallEngine();`
+## Этап видео — камера/экран в звонке 🚧
 
-После этого кнопки 📞/📹 в `MainWindow` откроют окно звонка (сейчас показывают статус
-«на подходе»). TURN/STUN уже настраиваются в окне настроек и хранятся в `TurnSettings`.
+- Добавить в звонок медиа-треки видео (SIPSorcery) или передачу JPEG-кадров по
+  DataChannel (как делает Windows-версия для экрана/камеры).
+- `ICameraDevice` (JPEG-кадры) через V4L2 / FFmpeg; захват экрана — X11/PipeWire.
+- Перенести соответствующий UI из `CallForm` в `CallWindow`.
 
 ## Этап 2 — Голосовые сообщения и видео-кружки 🚧
 
-- Реализовать `IAudioDevice` (запись/воспроизведение WAV) на PortAudio или FFmpeg.
+- Переиспользовать `IAudioDevice` для записи/воспроизведения голосовых.
 - Реализовать `ICameraDevice` (JPEG-кадры) через V4L2 / FFmpeg.
 - Перенести `VideoCircleRecordForm`, `VideoCirclePlayer`, `VideoCircleCodec`,
   `MediaCache` → Avalonia + эти интерфейсы (кодек кадров кроссплатформенный).
