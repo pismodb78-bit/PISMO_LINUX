@@ -42,9 +42,19 @@ namespace PISMO.Platform
     {
         public static Func<IAudioDevice> AudioDeviceFactory { get; set; }
 
-        public static bool AudioAvailable => AudioDeviceFactory != null;
+        /// <summary>Фабрика источника «камера». Аргумент — путь к устройству (напр. /dev/video0).</summary>
+        public static Func<string, IVideoSource> CameraSourceFactory { get; set; }
 
-        public static IAudioDevice CreateAudioDevice()
-            => AudioDeviceFactory?.Invoke();
+        /// <summary>Фабрика источника «экран».</summary>
+        public static Func<IVideoSource> ScreenSourceFactory { get; set; }
+
+        public static bool AudioAvailable => AudioDeviceFactory != null;
+        public static bool CameraAvailable => CameraSourceFactory != null;
+        public static bool ScreenShareAvailable => ScreenSourceFactory != null;
+
+        public static IAudioDevice CreateAudioDevice() => AudioDeviceFactory?.Invoke();
+        public static IVideoSource CreateCameraSource(string device = "/dev/video0")
+            => CameraSourceFactory?.Invoke(device);
+        public static IVideoSource CreateScreenSource() => ScreenSourceFactory?.Invoke();
     }
 }

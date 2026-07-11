@@ -2,38 +2,56 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="PISMO.Views.CallWindow"
         Title="PISMO — Звонок"
-        Width="420" Height="480"
-        CanResize="False"
+        Width="720" Height="620"
+        MinWidth="420" MinHeight="480"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgChatBrush}">
 
-    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Stretch"
-                Spacing="20" Margin="30">
+    <Grid RowDefinitions="*,Auto">
 
-        <Border Width="120" Height="120" CornerRadius="60"
-                HorizontalAlignment="Center" x:Name="Avatar"
-                Background="{StaticResource BlurpleBrush}">
-            <TextBlock x:Name="AvatarLetter" Text="?" FontSize="52" FontWeight="Bold"
-                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <!-- Область тайлов -->
+        <Grid Grid.Row="0">
+            <!-- Плейсхолдер для аудио-звонка (виден, пока нет видео) -->
+            <StackPanel x:Name="AudioPlaceholder" VerticalAlignment="Center"
+                        HorizontalAlignment="Center" Spacing="18">
+                <Border Width="120" Height="120" CornerRadius="60"
+                        HorizontalAlignment="Center" Background="{StaticResource BlurpleBrush}">
+                    <TextBlock x:Name="AvatarLetter" Text="?" FontSize="52" FontWeight="Bold"
+                               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock x:Name="PeerName" Text="" FontSize="22" FontWeight="Bold"
+                           Foreground="White" HorizontalAlignment="Center" />
+                <TextBlock x:Name="StatusLabel" Text="Соединение…" FontSize="14"
+                           Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Плитка видео-тайлов (заполняется в коде) -->
+            <ScrollViewer>
+                <WrapPanel x:Name="TilesHost" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" Margin="10" />
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Панель управления -->
+        <Border Grid.Row="1" Background="{StaticResource BgDarkestBrush}" Padding="0,14">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="18">
+                <Button x:Name="BtnMute" Width="56" Height="56" CornerRadius="28"
+                        Background="{StaticResource BgInputBrush}" Foreground="White"
+                        FontSize="22" Cursor="Hand" ToolTip.Tip="Микрофон" Content="🎤"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                <Button x:Name="BtnCamera" Width="56" Height="56" CornerRadius="28"
+                        Background="{StaticResource BgInputBrush}" Foreground="White"
+                        FontSize="22" Cursor="Hand" ToolTip.Tip="Камера" Content="📷"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                <Button x:Name="BtnScreen" Width="56" Height="56" CornerRadius="28"
+                        Background="{StaticResource BgInputBrush}" Foreground="White"
+                        FontSize="22" Cursor="Hand" ToolTip.Tip="Демонстрация экрана" Content="🖥"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                <Button x:Name="BtnHangup" Width="56" Height="56" CornerRadius="28"
+                        Background="{StaticResource RedBrush}" Foreground="White"
+                        FontSize="22" Cursor="Hand" ToolTip.Tip="Завершить" Content="📵"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+            </StackPanel>
         </Border>
-
-        <TextBlock x:Name="PeerName" Text="" FontSize="22" FontWeight="Bold"
-                   Foreground="White" HorizontalAlignment="Center" />
-        <TextBlock x:Name="StatusLabel" Text="Соединение…" FontSize="14"
-                   Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Center" />
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="24"
-                    Margin="0,20,0,0">
-            <Button x:Name="BtnMute" Width="64" Height="64" CornerRadius="32"
-                    Background="{StaticResource BgInputBrush}" Foreground="White"
-                    FontSize="24" Cursor="Hand" ToolTip.Tip="Микрофон"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    Content="🎤" />
-            <Button x:Name="BtnHangup" Width="64" Height="64" CornerRadius="32"
-                    Background="{StaticResource RedBrush}" Foreground="White"
-                    FontSize="24" Cursor="Hand" ToolTip.Tip="Завершить"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    Content="📵" />
-        </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

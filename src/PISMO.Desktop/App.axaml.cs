@@ -20,8 +20,17 @@ namespace PISMO
                 // Регистрируем платформенное аудио для звонков.
                 // Linux — ALSA (arecord/aplay). Другие ОС можно добавить позже.
                 if (OperatingSystem.IsLinux())
+                {
                     PISMO.Platform.PlatformServices.AudioDeviceFactory =
                         () => new PISMO.Platform.AlsaAudioDevice();
+                    // Видео камеры и демонстрация экрана — через ffmpeg (JPEG по DataChannel).
+                    PISMO.Platform.PlatformServices.CameraSourceFactory =
+                        dev => new PISMO.Platform.FfmpegVideoSource(
+                            PISMO.Platform.FfmpegVideoSource.Kind.Camera, dev);
+                    PISMO.Platform.PlatformServices.ScreenSourceFactory =
+                        () => new PISMO.Platform.FfmpegVideoSource(
+                            PISMO.Platform.FfmpegVideoSource.Kind.Screen);
+                }
 
                 // Приложение живёт, пока открыто хотя бы одно окно; при выходе из
                 // аккаунта MainWindow закрывается и снова показывается LoginWindow.

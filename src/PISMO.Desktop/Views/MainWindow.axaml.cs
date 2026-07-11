@@ -428,11 +428,6 @@ namespace PISMO.Views
                 return;
             }
 
-            if (withVideo)
-                await Dialogs.Info(this,
-                    "Пока доступны голосовые звонки. Видео и демонстрация экрана — " +
-                    "следующий этап (docs/ROADMAP.md). Звоним с голосом.", "Звонки");
-
             try
             {
                 int myId = UserSession.EffectiveId;
