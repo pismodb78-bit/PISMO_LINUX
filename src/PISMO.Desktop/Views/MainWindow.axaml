@@ -1,0 +1,118 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PISMO.Views.MainWindow"
+        Title="PISMO"
+        Width="1000" Height="680"
+        MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgChatBrush}">
+
+    <Grid ColumnDefinitions="270,*">
+
+        <!-- ══════════ САЙДБАР ══════════ -->
+        <Grid Grid.Column="0" Background="{StaticResource BgSidebarBrush}"
+              RowDefinitions="Auto,Auto,*,Auto">
+
+            <!-- Заголовок -->
+            <Border Grid.Row="0" Background="{StaticResource BgDarkestBrush}" Padding="14,12">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="SidebarTitle" Text="Личные сообщения"
+                               FontWeight="Bold" FontSize="15" Foreground="White" />
+                    <TextBlock x:Name="MeLabel" Text="" FontSize="12"
+                               Foreground="{StaticResource TextMutedBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Панель кнопок -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6"
+                        Margin="10,10,10,6">
+                <Button x:Name="BtnRefresh" Content="⟳" ToolTip.Tip="Обновить"
+                        Background="{StaticResource BgInputBrush}" Foreground="White"
+                        Cursor="Hand" Padding="10,6" CornerRadius="4" />
+                <Button x:Name="BtnNewGroup" Content="＋ Группа" ToolTip.Tip="Новая группа (скоро)"
+                        Background="{StaticResource BgInputBrush}" Foreground="White"
+                        Cursor="Hand" Padding="10,6" CornerRadius="4" />
+            </StackPanel>
+
+            <!-- Список диалогов -->
+            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="UserListPanel" Margin="8,4" Spacing="4" />
+            </ScrollViewer>
+
+            <!-- Нижняя панель аккаунта -->
+            <Border Grid.Row="3" Background="{StaticResource BgDarkestBrush}" Padding="10,8">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="BtnSettings" Content="⚙" ToolTip.Tip="Настройки"
+                            Background="Transparent" Foreground="White" Cursor="Hand"
+                            Padding="8,4" />
+                    <Button x:Name="BtnChangePw" Content="🔑" ToolTip.Tip="Сменить пароль"
+                            Background="Transparent" Foreground="White" Cursor="Hand"
+                            Padding="8,4" />
+                    <Button x:Name="BtnLogout" Content="Выйти" ToolTip.Tip="Выйти из аккаунта"
+                            Background="Transparent" Foreground="{StaticResource RedBrush}"
+                            Cursor="Hand" Padding="8,4" HorizontalAlignment="Right" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ══════════ ЧАТ ══════════ -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+
+            <!-- Шапка чата -->
+            <Border Grid.Row="0" Background="{StaticResource BgChatBrush}"
+                    BorderBrush="{StaticResource BgDarkestBrush}" BorderThickness="0,0,0,1"
+                    Padding="18,14">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock x:Name="ChatHeaderName" Grid.Column="0"
+                               Text="Выберите диалог" FontWeight="Bold" FontSize="16"
+                               Foreground="White" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnAudioCall" Content="📞" ToolTip.Tip="Аудиозвонок"
+                                Background="Transparent" Foreground="White" Cursor="Hand"
+                                FontSize="16" Padding="6" IsVisible="False" />
+                        <Button x:Name="BtnVideoCall" Content="📹" ToolTip.Tip="Видеозвонок"
+                                Background="Transparent" Foreground="White" Cursor="Hand"
+                                FontSize="16" Padding="6" IsVisible="False" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Сообщения -->
+            <ScrollViewer x:Name="MessagesScroll" Grid.Row="1"
+                          HorizontalScrollBarVisibility="Disabled" Padding="18,12">
+                <StackPanel x:Name="MessagesPanel" Spacing="8" />
+            </ScrollViewer>
+
+            <!-- Панель ввода -->
+            <Border Grid.Row="2" Background="{StaticResource BgChatBrush}" Padding="18,10,18,16">
+                <StackPanel Spacing="8">
+                    <!-- Превью вложения -->
+                    <Border x:Name="AttachPreview" IsVisible="False"
+                            Background="{StaticResource BgInputBrush}" CornerRadius="6"
+                            Padding="10" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock x:Name="AttachName" Foreground="{StaticResource TextNormalBrush}"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="BtnAttachCancel" Content="✕" Background="Transparent"
+                                    Foreground="{StaticResource RedBrush}" Cursor="Hand" Padding="4" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid ColumnDefinitions="Auto,*,Auto" Background="{StaticResource BgInputBrush}">
+                        <Button x:Name="BtnAttach" Grid.Column="0" Content="📎"
+                                Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                                Cursor="Hand" FontSize="18" Padding="12,8"
+                                VerticalAlignment="Center" />
+                        <TextBox x:Name="TxtMessage" Grid.Column="1" Watermark="Введите сообщение…"
+                                 Background="Transparent" AcceptsReturn="False"
+                                 VerticalContentAlignment="Center" />
+                        <Button x:Name="BtnSend" Grid.Column="2" Content="➤"
+                                Background="Transparent" Foreground="{StaticResource BlurpleBrush}"
+                                Cursor="Hand" FontSize="18" Padding="12,8"
+                                VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

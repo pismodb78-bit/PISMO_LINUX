@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PISMO.Views.RegisterWindow"
+        Title="PISMO — Регистрация"
+        Width="420" Height="540"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgChatBrush}">
+
+    <StackPanel Margin="40" Spacing="12" VerticalAlignment="Center">
+        <TextBlock Text="Создать аккаунт" FontSize="24" FontWeight="Bold"
+                   Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,10" />
+
+        <TextBlock Text="ИМЯ" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+        <TextBox x:Name="TxtName" Watermark="Имя" />
+
+        <TextBlock Text="ФАМИЛИЯ" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+        <TextBox x:Name="TxtSurname" Watermark="Фамилия" />
+
+        <TextBlock Text="ЛОГИН" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+        <TextBox x:Name="TxtLogin" Watermark="Логин" />
+
+        <TextBlock Text="ПАРОЛЬ" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}" />
+        <TextBox x:Name="TxtPass" Watermark="Минимум 8 символов" PasswordChar="●" />
+
+        <TextBlock x:Name="LblError" IsVisible="False" TextWrapping="Wrap"
+                   Foreground="{StaticResource RedBrush}" FontSize="12" />
+
+        <Button x:Name="BtnRegister" Classes="blurple" Content="Зарегистрироваться"
+                HorizontalAlignment="Stretch" Margin="0,6,0,0" />
+        <Button x:Name="LnkBack" Classes="link" Content="← Назад ко входу"
+                HorizontalAlignment="Center" />
+    </StackPanel>
+</Window>

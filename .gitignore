@@ -1,0 +1,20 @@
+# .NET / Avalonia build output
+bin/
+obj/
+*.user
+*.suo
+
+# Rider / VS
+.idea/
+.vs/
+*.DotSettings.user
+
+# Runtime config, генерируемый локально
+src/PISMO.Desktop/turnsettings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log

@@ -1,0 +1,83 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PISMO.Views.SettingsWindow"
+        Title="PISMO — Настройки"
+        Width="520" Height="600"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgChatBrush}">
+
+    <ScrollViewer>
+        <StackPanel Margin="28" Spacing="14">
+            <TextBlock Text="Настройки" FontSize="22" FontWeight="Bold" Foreground="White" />
+
+            <!-- Подключение к БД -->
+            <Border Background="{StaticResource BgSidebarBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Подключение к базе данных (ip.txt)"
+                               FontWeight="Bold" Foreground="White" FontSize="14" />
+                    <TextBlock Text="Пример: server=192.168.0.15;port=3306;uid=user1;password=***;database=bdauth"
+                               Foreground="{StaticResource TextFaintBrush}" FontSize="11" TextWrapping="Wrap" />
+                    <TextBox x:Name="TxtConn" AcceptsReturn="True" Height="70"
+                             TextWrapping="Wrap" VerticalContentAlignment="Top" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnSaveConn" Classes="blurple" Content="Сохранить" />
+                        <Button x:Name="BtnTestConn" Content="Проверить"
+                                Background="{StaticResource BgInputBrush}" Foreground="White"
+                                Cursor="Hand" Padding="16,9" CornerRadius="4" />
+                    </StackPanel>
+                    <TextBlock Text="После сохранения перезапустите приложение — строка читается при старте."
+                               Foreground="{StaticResource TextFaintBrush}" FontSize="11" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- TURN -->
+            <Border Background="{StaticResource BgSidebarBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="TURN / STUN (для звонков)"
+                               FontWeight="Bold" Foreground="White" FontSize="14" />
+                    <CheckBox x:Name="ChkTurnEnabled" Content="Использовать TURN"
+                              Foreground="{StaticResource TextMutedBrush}" />
+
+                    <Grid ColumnDefinitions="*,110" >
+                        <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,8,0">
+                            <TextBlock Text="Адрес сервера" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+                            <TextBox x:Name="TxtTurnAddr" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Порт" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+                            <TextBox x:Name="TxtTurnPort" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,*">
+                        <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,8,0">
+                            <TextBlock Text="Транспорт" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+                            <ComboBox x:Name="CmbTransport" HorizontalAlignment="Stretch">
+                                <ComboBoxItem>udp</ComboBoxItem>
+                                <ComboBoxItem>tcp</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="TTL (сек)" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+                            <TextBox x:Name="TxtTurnTtl" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Пользователь (base user)" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+                        <TextBox x:Name="TxtTurnUser" />
+                    </StackPanel>
+
+                    <CheckBox x:Name="ChkTimeLimited" Content="Временные (time-limited) credentials"
+                              Foreground="{StaticResource TextMutedBrush}" />
+
+                    <Button x:Name="BtnSaveTurn" Classes="blurple" Content="Сохранить TURN"
+                            HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="LblStatus" IsVisible="False" TextWrapping="Wrap" FontSize="12" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

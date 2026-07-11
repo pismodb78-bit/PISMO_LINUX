@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PISMO.Views.LoginWindow"
+        Title="PISMO — Вход"
+        Width="420" Height="520"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgChatBrush}">
+
+    <Grid RowDefinitions="Auto,*">
+        <StackPanel Grid.Row="1" Margin="40" Spacing="14" VerticalAlignment="Center">
+            <TextBlock Text="PISMO" FontSize="34" FontWeight="Bold"
+                       Foreground="White" HorizontalAlignment="Center" />
+            <TextBlock Text="С возвращением!" FontSize="14"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       HorizontalAlignment="Center" Margin="0,0,0,10" />
+
+            <TextBlock Text="ЛОГИН" FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextMutedBrush}" />
+            <TextBox x:Name="TxtLogin" Watermark="Введите логин" />
+
+            <TextBlock Text="ПАРОЛЬ" FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextMutedBrush}" />
+            <TextBox x:Name="TxtPass" Watermark="Введите пароль" PasswordChar="●" />
+
+            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4,0,0">
+                <CheckBox Grid.Column="0" x:Name="ChkRemember"
+                          Content="Запомнить"
+                          Foreground="{StaticResource TextMutedBrush}" />
+                <Button Grid.Column="1" x:Name="BtnSave" Content="💾"
+                        Background="Transparent" ToolTip.Tip="Сохранить данные входа"
+                        Cursor="Hand" />
+                <Button Grid.Column="2" x:Name="BtnClear" Content="🗑"
+                        Background="Transparent" ToolTip.Tip="Удалить сохранённые данные"
+                        Cursor="Hand" />
+            </Grid>
+
+            <TextBlock x:Name="LblError" IsVisible="False" TextWrapping="Wrap"
+                       Foreground="{StaticResource RedBrush}" FontSize="12" />
+
+            <Button x:Name="BtnLogin" Classes="blurple" Content="Войти"
+                    HorizontalAlignment="Stretch" Margin="0,6,0,0" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+                <TextBlock Text="Нет аккаунта?"
+                           Foreground="{StaticResource TextMutedBrush}" FontSize="13" />
+                <Button x:Name="LnkRegister" Classes="link" Content="Зарегистрироваться" FontSize="13" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

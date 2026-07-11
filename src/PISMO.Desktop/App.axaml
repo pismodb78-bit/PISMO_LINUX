@@ -1,0 +1,73 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PISMO.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <!-- Палитра в стиле Discord -->
+        <Color x:Key="BgDarkest">#202225</Color>
+        <Color x:Key="BgSidebar">#2f3136</Color>
+        <Color x:Key="BgChat">#36393f</Color>
+        <Color x:Key="BgInput">#40444b</Color>
+        <Color x:Key="BgBubbleMine">#5865F2</Color>
+        <Color x:Key="BgBubbleTheirs">#2f3136</Color>
+        <Color x:Key="Blurple">#5865F2</Color>
+        <Color x:Key="BlurpleHover">#4752C4</Color>
+        <Color x:Key="TextNormal">#dcddde</Color>
+        <Color x:Key="TextMuted">#b9bbbe</Color>
+        <Color x:Key="TextFaint">#72767d</Color>
+        <Color x:Key="Green">#43b581</Color>
+        <Color x:Key="Red">#f04747</Color>
+
+        <SolidColorBrush x:Key="BgDarkestBrush" Color="{StaticResource BgDarkest}" />
+        <SolidColorBrush x:Key="BgSidebarBrush" Color="{StaticResource BgSidebar}" />
+        <SolidColorBrush x:Key="BgChatBrush" Color="{StaticResource BgChat}" />
+        <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInput}" />
+        <SolidColorBrush x:Key="BlurpleBrush" Color="{StaticResource Blurple}" />
+        <SolidColorBrush x:Key="TextNormalBrush" Color="{StaticResource TextNormal}" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMuted}" />
+        <SolidColorBrush x:Key="TextFaintBrush" Color="{StaticResource TextFaint}" />
+        <SolidColorBrush x:Key="GreenBrush" Color="{StaticResource Green}" />
+        <SolidColorBrush x:Key="RedBrush" Color="{StaticResource Red}" />
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <!-- Blurple-кнопка -->
+        <Style Selector="Button.blurple">
+            <Setter Property="Background" Value="{StaticResource BlurpleBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.blurple:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BlurpleHover}" />
+        </Style>
+
+        <!-- Ссылка -->
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#00aff4" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="TextBlock.TextDecorations" Value="Underline" />
+        </Style>
+
+        <!-- Тёмные поля ввода -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{StaticResource BgInputBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="CaretBrush" Value="White" />
+        </Style>
+    </Application.Styles>
+</Application>
