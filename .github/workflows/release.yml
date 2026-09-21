@@ -1,0 +1,87 @@
+name: Релиз
+
+# Выпуск версии для Linux: собрать, упаковать, опубликовать Release.
+#
+# Как выпустить:
+#   Actions → Релиз → Run workflow → tag = 0.1.0
+#
+# Что получает человек: один архив, внутри которого приложение вместе со
+# средой .NET. Ставить .NET отдельно не нужно — это важно, потому что в
+# Linux его нет почти нигде, а требовать установку ради мессенджера значит
+# не выпустить его вовсе.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Версия релиза, например 0.1.0'
+        required: true
+      notes:
+        description: 'Описание релиза (необязательно)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Опубликовать самодостаточную сборку
+        run: |
+          dotnet publish src/PISMO.Desktop/PISMO.Desktop.csproj \
+            -c Release -r linux-x64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:DebugType=None \
+            -o out/pismo
+
+      - name: Собрать архив
+        run: |
+          # Ярлык для меню приложений кладём рядом: без него программа
+          # запускается только из терминала.
+          cat > out/pismo/pismo.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=PISMO
+          Comment=Мессенджер PISMO
+          Exec=pismo
+          Icon=pismo
+          Terminal=false
+          Categories=Network;InstantMessaging;
+          EOF
+          cat > out/pismo/УСТАНОВКА.txt <<'EOF'
+          PISMO для Linux
+          ===============
+
+          Запуск: ./PISMO
+
+          Среда .NET уже внутри, ставить её не нужно. Но две вещи система
+          должна дать сама, потому что это доступ к железу:
+
+            звук в звонках     — alsa-utils   (arecord/aplay)
+            камера и экран     — ffmpeg
+
+          Arch:   sudo pacman -S alsa-utils ffmpeg
+          Debian: sudo apt install alsa-utils ffmpeg
+
+          Без них переписка работает полностью, а звонок откатится на то,
+          что доступно: нет ffmpeg — останется только голос.
+          EOF
+          chmod +x out/pismo/PISMO
+          tar -czf pismo-linux-x64.tar.gz -C out pismo
+          ls -la pismo-linux-x64.tar.gz
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: ${{ github.event.inputs.tag }}
+          body: ${{ github.event.inputs.notes }}
+          files: pismo-linux-x64.tar.gz
+          fail_on_unmatched_files: true

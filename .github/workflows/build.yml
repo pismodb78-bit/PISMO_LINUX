@@ -1,0 +1,36 @@
+name: Сборка
+
+# Проверка сборки на каждый пуш.
+#
+# До этого в репозитории не было ни одного рабочего процесса: ошибка
+# компиляции обнаруживалась только на машине разработчика, а готовой сборки
+# скачать было неоткуда — отсюда и «релиза нет».
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'db/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Собрать
+        run: |
+          set -o pipefail
+          dotnet build PISMO.sln -c Release 2>&1 | tee build.log
+
+      - name: Ошибки компиляции
+        if: failure()
+        run: |
+          echo "──────── ошибки компиляции ────────"
+          grep -E "error [A-Z]+[0-9]+" build.log || echo "(строк с 'error' нет — смотрите полный лог)"
