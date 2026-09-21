@@ -33,6 +33,21 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Тег и версия в csproj должны совпадать — на этом держится
+      # автообновление. Клиент сравнивает tag_name релиза со своей
+      # версией сборки: разойдись они, и он будет скачивать обновление,
+      # перезапускаться, видеть прежнюю версию — и предлагать снова, при
+      # каждом запуске. Лучше не выпустить релиз, чем выпустить такой.
+      - name: Сверить тег с версией в проекте
+        run: |
+          tag="${{ github.event.inputs.tag }}"
+          ver=$(grep -oPm1 '(?<=<Version>)[^<]+' src/PISMO.Desktop/PISMO.Desktop.csproj)
+          echo "тег=$tag  csproj=$ver"
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::Тег $tag не совпадает с <Version>$ver</Version> в PISMO.Desktop.csproj."
+            exit 1
+          fi
+
       - name: Опубликовать самодостаточную сборку
         run: |
           dotnet publish src/PISMO.Desktop/PISMO.Desktop.csproj \

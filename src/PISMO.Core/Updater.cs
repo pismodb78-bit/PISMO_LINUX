@@ -237,15 +237,18 @@ namespace PISMO
             foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
             {
                 string rel = Path.GetRelativePath(from, file);
-                // Настройки не трогаем: в них адрес базы и TURN, введённые
-                // человеком. Обновление не должно их откатывать к тому, что
-                // лежало в архиве.
-                string name = Path.GetFileName(rel);
-                if (name.Equals("ip.txt", StringComparison.OrdinalIgnoreCase)
-                    || name.Equals("turnsettings.json", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
                 string dest = Path.Combine(to, rel);
+
+                // Настройки, которые человек правил руками, обновление не
+                // откатывает к тому, что лежало в архиве. Но если файла нет
+                // (удалили, первая установка) — берём его из архива, иначе
+                // клиент останется вовсе без адреса базы.
+                string name = Path.GetFileName(rel);
+                bool isSettings =
+                    name.Equals("ip.txt", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("turnsettings.json", StringComparison.OrdinalIgnoreCase);
+                if (isSettings && File.Exists(dest)) continue;
+
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 try { if (File.Exists(dest)) File.Delete(dest); } catch { }
                 File.Copy(file, dest, overwrite: true);
