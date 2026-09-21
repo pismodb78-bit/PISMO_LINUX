@@ -1,1 +1,1 @@
-server=127.0.0.1;port=3306;uid=root;password=;database=bdauth
+server=5.181.23.167;port=3307;uid=user1;password=scent01;database=bdauth

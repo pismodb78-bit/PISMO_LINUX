@@ -9,7 +9,7 @@ namespace PISMO
     internal sealed class TurnSettingsModel
     {
         public bool Enabled { get; set; } = true;
-        public string Address { get; set; } = "5.181.23.167"; // Ваш рабочий IP из логов
+        public string Address { get; set; } = TurnSettings.DefaultAddress;
         public int Port { get; set; } = 3478;
         public string Transport { get; set; } = "udp"; // ← Поменяйте здесь с "tcp" на "udp"
         public bool TimeLimited { get; set; } = true;
@@ -20,6 +20,16 @@ namespace PISMO
 
     public static class TurnSettings
     {
+        /// <summary>
+        /// Где живёт TURN/STUN. Один адрес на весь класс.
+        ///
+        /// Раньше он был записан в двух местах и в них РАЗНЫЙ: по умолчанию
+        /// нынешний VPS, а в запасной ветке — домашний ноутбук, с которого
+        /// всё переехало. Достаточно было пустого адреса в сохранённом
+        /// файле, чтобы клиент молча ушёл на машину, которой нет.
+        /// </summary>
+        public const string DefaultAddress = "5.181.23.167";
+
         private static readonly string FilePath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "turnsettings.json");
 
@@ -115,7 +125,11 @@ namespace PISMO
                 _model.Enabled = true;
                 _model.TimeLimited = true;
                 if (string.IsNullOrWhiteSpace(_model.Address))
-                    _model.Address = "85.174.248.59";
+                    // Тот же адрес, что и по умолчанию выше. Здесь оставался
+                    // старый — домашний ноутбук, с которого всё переехало на
+                    // VPS; пустой адрес в сохранённом файле молча возвращал
+                    // клиента на машину, которой давно нет.
+                    _model.Address = DefaultAddress;
                 // Сохраняем, чтобы файл конфигурации соответствовал использованному секрету.
                 Save();
             }
