@@ -8,7 +8,7 @@ namespace PISMO
 {
     internal sealed class TurnSettingsModel
     {
-        public bool Enabled { get; set; } = true;
+        public bool Enabled { get; set; } = false;
         public string Address { get; set; } = TurnSettings.DefaultAddress;
         public int Port { get; set; } = 3478;
         public string Transport { get; set; } = "udp"; // ← Поменяйте здесь с "tcp" на "udp"
@@ -21,14 +21,19 @@ namespace PISMO
     public static class TurnSettings
     {
         /// <summary>
-        /// Где живёт TURN/STUN. Один адрес на весь класс.
+        /// Адрес TURN по умолчанию. ПУСТО — и это не упущение.
         ///
-        /// Раньше он был записан в двух местах и в них РАЗНЫЙ: по умолчанию
-        /// нынешний VPS, а в запасной ветке — домашний ноутбук, с которого
-        /// всё переехало. Достаточно было пустого адреса в сохранённом
-        /// файле, чтобы клиент молча ушёл на машину, которой нет.
+        /// TURN у проекта нет: ни одна из машин его не поднимает. Здесь стоял
+        /// сперва домашний ноутбук, потом — подставленный мной адрес VPS, где
+        /// на 3478 никто не слушает. Разницы между ними никакой: и то и другое
+        /// заставляло SIPSorcery на каждом звонке ждать ответа от сервера,
+        /// которого нет, — лишние секунды до соединения и ноль пользы.
+        ///
+        /// Звонки идут напрямую между клиентами, NAT разбирается через STUN
+        /// (см. CallTransport.BuildRtcConfig). Появится TURN — его адрес
+        /// вписывается в настройках, и галочка включает relay обратно.
         /// </summary>
-        public const string DefaultAddress = "5.181.23.167";
+        public const string DefaultAddress = "";
 
         private static readonly string FilePath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "turnsettings.json");
@@ -122,14 +127,16 @@ namespace PISMO
 
                 // Принудительно используем фиксированный секрет из кода — перезапишем модель.
                 _model.Secret = ForcedSecretHex;
-                _model.Enabled = true;
                 _model.TimeLimited = true;
+
+                // Раньше здесь стояло _model.Enabled = true и подстановка
+                // адреса вместо пустого. Из-за этого галочка «TURN» в
+                // настройках не работала вовсе: её снимали, файл сохранялся,
+                // а следующий запуск включал relay обратно — и звонки снова
+                // стучались в несуществующий сервер. Уважаем сохранённый
+                // выбор; без адреса relay просто не используется.
                 if (string.IsNullOrWhiteSpace(_model.Address))
-                    // Тот же адрес, что и по умолчанию выше. Здесь оставался
-                    // старый — домашний ноутбук, с которого всё переехало на
-                    // VPS; пустой адрес в сохранённом файле молча возвращал
-                    // клиента на машину, которой давно нет.
-                    _model.Address = DefaultAddress;
+                    _model.Enabled = false;
                 // Сохраняем, чтобы файл конфигурации соответствовал использованному секрету.
                 Save();
             }

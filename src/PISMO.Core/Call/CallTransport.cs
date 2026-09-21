@@ -62,31 +62,39 @@ namespace PISMO
         // ─────────────────────────────────────────────────────────────
         private RTCConfiguration BuildRtcConfig()
         {
-            System.Diagnostics.Debug.WriteLine($"[TURN CFG] Enabled={TurnSettings.TurnEnabled}");
-            System.Diagnostics.Debug.WriteLine($"[TURN CFG] Address={TurnSettings.TurnServerAddress}");
-            System.Diagnostics.Debug.WriteLine($"[TURN CFG] Transport={TurnSettings.TurnTransport}");
-            var (u, p) = TurnSettings.GetCredentials();
-            System.Diagnostics.Debug.WriteLine($"[TURN CFG] username={u}");
-            System.Diagnostics.Debug.WriteLine($"[TURN CFG] password={p}");
-
-         
-
             var iceServers = new List<RTCIceServer>();
-            var (username, password) = TurnSettings.GetCredentials();
-            string transport = TurnSettings.TurnTransport ?? "udp";
 
-            iceServers.Add(new RTCIceServer
-            {
-                urls = "stun:stun.l.google.com:19302"
-            });
+            // STUN — чтобы узнать свой внешний адрес. Их два: если первый не
+            // ответит, сбор кандидатов не должен на этом закончиться.
+            iceServers.Add(new RTCIceServer { urls = "stun:stun.l.google.com:19302" });
+            iceServers.Add(new RTCIceServer { urls = "stun:stun1.l.google.com:19302" });
 
-            iceServers.Add(new RTCIceServer
+            // TURN добавляем ТОЛЬКО когда он включён и адрес задан.
+            //
+            // Раньше relay прописывался всегда — даже при снятой галочке и
+            // даже с пустым адресом (получалось "turn::3478"). TURN-сервера у
+            // нас нет, и каждый звонок начинался с ожидания ответа от него:
+            // ICE честно пытается сделать allocate и отваливается только по
+            // таймауту. Отсюда и бралась задержка перед соединением.
+            string addr = TurnSettings.TurnServerAddress;
+            if (TurnSettings.TurnEnabled && !string.IsNullOrWhiteSpace(addr))
             {
-                urls = $"turn:{TurnSettings.TurnServerAddress}:{TurnSettings.TurnServerPort}?transport={transport}",
-                username = username,
-                credential = password,
-                credentialType = RTCIceCredentialType.password
-            });
+                var (username, password) = TurnSettings.GetCredentials();
+                string transport = TurnSettings.TurnTransport ?? "udp";
+                System.Diagnostics.Debug.WriteLine(
+                    $"[ICE] relay через turn:{addr}:{TurnSettings.TurnServerPort} ({transport}), user={username}");
+                iceServers.Add(new RTCIceServer
+                {
+                    urls = $"turn:{addr}:{TurnSettings.TurnServerPort}?transport={transport}",
+                    username = username,
+                    credential = password,
+                    credentialType = RTCIceCredentialType.password
+                });
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[ICE] TURN не задан — соединяемся напрямую (STUN + host)");
+            }
 
             return new RTCConfiguration
             {

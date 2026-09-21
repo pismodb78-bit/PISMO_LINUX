@@ -52,7 +52,7 @@ namespace PISMO
                     PartnerId = Convert.ToInt32(row["id"]),
                     Name = BuildName(row["Name"], row["Surname"], row["login"]),
                     Login = row["login"].ToString(),
-                    LastMessage = row["last_msg"] == DBNull.Value ? "" : row["last_msg"].ToString(),
+                    LastMessage = row["last_msg"] == DBNull.Value ? "" : Crypto.Dec(row["last_msg"].ToString()),
                     Unread = row["unread"] == DBNull.Value ? 0 : Convert.ToInt32(row["unread"]),
                 });
             }
@@ -109,7 +109,9 @@ namespace PISMO
                     Id = reader.GetInt32("id"),
                     SenderId = reader.GetInt32("sender_id"),
                     ReceiverId = reader.GetInt32("receiver_id"),
-                    Text = reader["text"] == DBNull.Value ? "" : reader["text"].ToString(),
+                    // Расшифровываем на чтении: в базе лежит "enc:v2:…" от ПК и
+                    // телефона. Без этого в окне вместо сообщения была бы base64.
+                    Text = reader["text"] == DBNull.Value ? "" : Crypto.Dec(reader["text"].ToString()),
                     IsRead = !reader.IsDBNull(reader.GetOrdinal("is_read")) && reader.GetBoolean("is_read"),
                     CreatedAt = reader.GetDateTime("created_at"),
                     SenderName = BuildName(reader["Name"], reader["Surname"], reader["login"]),
@@ -132,7 +134,9 @@ namespace PISMO
             using var cmd = new MySqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@s", myId);
             cmd.Parameters.AddWithValue("@r", partnerId);
-            cmd.Parameters.AddWithValue("@t", text ?? "");
+            // Шифруем на записи — ровно тем же ключом и форматом, что ПК и
+            // Android, иначе они увидят наш текст открытым, а мы их — нет.
+            cmd.Parameters.AddWithValue("@t", Crypto.Enc(text ?? ""));
             if (imageData != null && imageData.Length > 0)
                 cmd.Parameters.Add("@img", MySqlDbType.LongBlob).Value = imageData;
             else

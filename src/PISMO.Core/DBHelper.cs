@@ -48,7 +48,9 @@ namespace PISMO
                 {
                     try
                     {
-                        var builder = new MySqlConnectionStringBuilder(ipLine);
+                        // ip.txt один на все клиенты и, кроме базы, несёт адреса
+                        // сигналинга и сервера звонков. Их надо убрать до разбора.
+                        var builder = new MySqlConnectionStringBuilder(StripNonDbKeys(ipLine));
 
                         // Если в файле указана серверная часть — корректируем порт по локальной логике
                         var server = builder.Server;
@@ -104,6 +106,38 @@ namespace PISMO
                 System.Diagnostics.Debug.WriteLine($"[DBHelper ERROR] {ex.Message}");
                 _connectionString = "Server=localhost;Port=3306;Database=bdauth;Uid=root;Pwd=;CharSet=utf8mb4;";
             }
+        }
+
+        /// <summary>
+        /// Выбрасывает из строки ip.txt пары, которые не относятся к MySQL.
+        ///
+        /// Файл общий с Windows-сборкой и выглядит так:
+        ///   server=IP;port=3307;uid=…;password=…;database=bdauth;
+        ///   ws=ws://IP:8080;livekit=ws://IP:7880
+        ///
+        /// MySqlConnectionStringBuilder о ключе livekit не знает и бросает
+        /// «Option not supported» — падает разбор ВСЕЙ строки, после чего
+        /// клиент молча уходит на localhost. Раньше эти ключи приходилось
+        /// вычищать из файла руками, и Linux получал свою копию ip.txt,
+        /// которая расходилась с остальными при первой же смене адреса.
+        /// </summary>
+        private static string StripNonDbKeys(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return raw;
+            var keep = new System.Collections.Generic.List<string>();
+            foreach (var part in raw.Split(';'))
+            {
+                var seg = part.Trim();
+                if (seg.Length == 0) continue;
+                int eq = seg.IndexOf('=');
+                string key = (eq >= 0 ? seg.Substring(0, eq) : seg).Trim().ToLowerInvariant();
+                if (key == "ws" || key == "websocket") continue;
+                if (key == "livekit" || key == "lk") continue;
+                if (key == "lkkey" || key == "livekitkey") continue;
+                if (key == "lksecret" || key == "livekitsecret") continue;
+                keep.Add(seg);
+            }
+            return string.Join(";", keep);
         }
 
         /// <summary>Определяет правильный порт для подключения.</summary>

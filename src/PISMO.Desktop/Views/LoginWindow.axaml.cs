@@ -28,6 +28,9 @@ namespace PISMO.Views
             TxtPass.KeyDown += (_, e) => { if (e.Key == Key.Enter) BtnLogin_Click(null, null); };
 
             Opened += (_, _) => TestDbOnStart();
+            // Проверка обновлений — до входа: ничего не открыто, перезапуск
+            // ничего не оборвёт. Молча уходит, если обновления нет.
+            Opened += (_, _) => UpdateFlow.CheckInBackground(this);
             LoadSavedCredentials();
         }
 
