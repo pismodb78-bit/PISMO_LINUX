@@ -240,7 +240,11 @@ namespace PISMO.Views
         /// </summary>
         private static Control TextWithMentions(ChatMessage m)
         {
-            var normal = m.IsMine ? Brushes.White : new SolidColorBrush(Color.Parse("#dcddde"));
+            // IBrush, а не var: Brushes.White и SolidColorBrush — разные типы,
+            // и вывести общий у тернарника не получится.
+            IBrush normal = m.IsMine
+                ? Brushes.White
+                : new SolidColorBrush(Color.Parse("#dcddde"));
             var block = new TextBlock
             {
                 TextWrapping = TextWrapping.Wrap,
