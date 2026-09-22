@@ -390,6 +390,12 @@ namespace PISMO.Views
             try
             {
                 var messages = ServerService.Messages(_channelId);
+
+                var ids = new List<int>();
+                foreach (var m in messages) ids.Add(m.Id);
+                _reactions = ReactionsService.ForMessages(
+                    ids, ReactionsService.Scope.Server, _me);
+
                 string lastDate = "";
                 foreach (var m in messages)
                 {
@@ -432,7 +438,15 @@ namespace PISMO.Views
             CanDelete = msg => msg.IsMine || _canManage,
             Delete = async msg => await DeleteMessage(msg),
             SaveFile = async msg => await SaveAttachment(msg),
+            Reactions = msg => _reactions.TryGetValue(msg.Id, out var r) ? r : null,
+            React = (msg, emoji) =>
+            {
+                ReactionsService.Toggle(msg.Id, ReactionsService.Scope.Server, _me, emoji);
+                LoadMessages();
+            },
         });
+
+        private Dictionary<int, List<ReactionsService.Reaction>> _reactions = new();
 
         private void StartReply(ChatMessage m)
         {
@@ -684,7 +698,7 @@ namespace PISMO.Views
             {
                 if (payload != "channel") return;
                 if (sessionId != _channelId) return;
-                if (type is "new_message" or "edit" or "pin") LoadMessages();
+                if (type is "new_message" or "edit" or "pin" or "reaction") LoadMessages();
             }
             catch { }
         }

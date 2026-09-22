@@ -37,6 +37,12 @@ namespace PISMO.Views
             /// параметр: true — кружок (video_data), false — голосовое.</summary>
             public Action<ChatMessage, bool> PlayMedia;
 
+            /// <summary>Поставить или снять реакцию.</summary>
+            public Action<ChatMessage, string> React;
+
+            /// <summary>Реакции этого сообщения — уже посчитанные.</summary>
+            public Func<ChatMessage, List<ReactionsService.Reaction>> Reactions;
+
             /// <summary>Показывать ли имя отправителя над сообщением.
             /// В личной переписке оно лишнее — там собеседник один.</summary>
             public bool ShowSender;
@@ -194,6 +200,34 @@ namespace PISMO.Views
                 });
             content.Children.Add(meta);
 
+            // Реакции под сообщением — пилюлями, как в Discord. Свою видно по
+            // рамке: без неё непонятно, ты уже отметился или это чужая.
+            var reactions = a.Reactions?.Invoke(m);
+            if (reactions is { Count: > 0 } && a.React != null)
+            {
+                var row = new WrapPanel { Orientation = Orientation.Horizontal };
+                foreach (var r in reactions)
+                {
+                    var pill = new Button
+                    {
+                        Content = $"{r.Emoji} {r.Count}",
+                        FontSize = 12,
+                        Padding = new Thickness(7, 2),
+                        Margin = new Thickness(0, 0, 4, 0),
+                        Background = new SolidColorBrush(
+                            r.Mine ? Color.Parse("#414675") : Color.Parse("#3a3d43")),
+                        BorderBrush = new SolidColorBrush(Color.Parse("#5865F2")),
+                        BorderThickness = new Thickness(r.Mine ? 1 : 0),
+                        Foreground = Brushes.White,
+                        Cursor = new Cursor(StandardCursorType.Hand),
+                    };
+                    string emoji = r.Emoji;
+                    pill.Click += (_, _) => a.React(m, emoji);
+                    row.Children.Add(pill);
+                }
+                content.Children.Add(row);
+            }
+
             return Wrap(m, content, muted: false, a: a);
         }
 
@@ -231,6 +265,23 @@ namespace PISMO.Views
                 var copy = new MenuItem { Header = "Копировать текст" };
                 copy.Click += (_, _) => a.Copy(m);
                 items.Add(copy);
+            }
+
+            if (a.React != null)
+            {
+                // Подменю с набором эмодзи: отдельным пунктом на каждый
+                // получилось бы меню на десять строк ради одного нажатия.
+                var react = new MenuItem { Header = "Реакция" };
+                var emojis = new List<Control>();
+                foreach (var e in ReactionsService.Common)
+                {
+                    var one = new MenuItem { Header = e };
+                    string captured = e;
+                    one.Click += (_, _) => a.React(m, captured);
+                    emojis.Add(one);
+                }
+                react.ItemsSource = emojis;
+                items.Add(react);
             }
 
             if (a.Pin != null)

@@ -157,6 +157,26 @@ namespace PISMO.Views
             Deactivated += (_, _) => { _windowActive = false; _lastActiveAt = DateTime.UtcNow; };
 
             ConnectSignaling();
+            SetupTray();
+
+            // Крестик: свернуться в значок или выйти — СПРАШИВАЕМ один раз
+            // за запуск и дальше поступаем так же.
+            //
+            // Почему не прячем молча, как принято у мессенджеров. Значок в
+            // трее на Linux показывает не программа, а окружение, и делает
+            // это не везде: в голом GNOME без расширения или в оконном
+            // менеджере без панели значка не будет вовсе. Спрятать окно в
+            // значок, которого нет, — это потерять программу: ни открыть, ни
+            // закрыть. Поэтому решает человек, а не мы за него.
+            Closing += (_, e) =>
+            {
+                if (_quitting || _tray == null) return;
+                if (_hideOnClose == true) { e.Cancel = true; Hide(); return; }
+                if (_hideOnClose == false) return;
+
+                e.Cancel = true;
+                _ = AskCloseBehaviour();
+            };
 
             Closed += (_, _) =>
             {
@@ -165,10 +185,84 @@ namespace PISMO.Views
                 DisconnectSignaling();
                 try { _voice?.Cancel(); } catch { }
                 try { PISMO.Media.VoiceNote.StopPlayback(); } catch { }
+                try { if (_tray != null) _tray.IsVisible = false; } catch { }
                 System.Threading.Tasks.Task.Run(PresenceService.MarkOffline);
             };
         }
 
+
+        // ─────────────── Трей и уведомления ───────────────
+
+        private TrayIcon _tray;
+
+        /// <summary>
+        /// Значок в трее: закрыли окно — программа осталась на связи, а не
+        /// умерла. Именно этого ждут от мессенджера; без значка единственным
+        /// способом продолжить получать сообщения было держать окно открытым.
+        /// </summary>
+        private void SetupTray()
+        {
+            try
+            {
+                var open = new NativeMenuItem("Открыть PISMO");
+                open.Click += (_, _) => { Show(); Activate(); };
+                var quit = new NativeMenuItem("Выйти");
+                quit.Click += (_, _) =>
+                {
+                    _quitting = true;
+                    try { PresenceService.MarkOffline(); } catch { }
+                    Close();
+                    Environment.Exit(0);
+                };
+
+                _tray = new TrayIcon
+                {
+                    ToolTipText = "PISMO",
+                    IsVisible = true,
+                    Menu = new NativeMenu { Items = { open, quit } },
+                };
+                _tray.Clicked += (_, _) => { Show(); Activate(); };
+            }
+            catch
+            {
+                // Трея может не быть вовсе — например, в голом оконном
+                // менеджере без панели. Это не повод не запуститься.
+                _tray = null;
+            }
+        }
+
+        private bool _quitting;
+
+        /// <summary>null — ещё не спрашивали; true — сворачиваться; false — выходить.</summary>
+        private bool? _hideOnClose;
+
+        private async System.Threading.Tasks.Task AskCloseBehaviour()
+        {
+            bool hide = await Dialogs.Confirm(this,
+                "Свернуть PISMO в значок у часов — или выйти совсем?\n\n" +
+                "Свёрнутая программа продолжает получать сообщения. " +
+                "Значок показывает окружение рабочего стола, и не во всех он " +
+                "есть: если не увидите его — выбирайте «Выйти».",
+                "Закрыть окно", "Свернуть в значок", "Выйти");
+
+            _hideOnClose = hide;
+            if (hide) { Hide(); return; }
+
+            _quitting = true;
+            Close();
+        }
+
+        /// <summary>
+        /// Уведомление о новом сообщении — только когда окно не на виду.
+        /// Показывать всплывашку поверх чата, который человек и так читает,
+        /// значит мешать ему читать.
+        /// </summary>
+        private void NotifyNew(string who, string text)
+        {
+            if (_windowActive) return;
+            PISMO.Platform.DesktopNotifications.Show(
+                string.IsNullOrWhiteSpace(who) ? "PISMO" : who, text);
+        }
 
         // ─────────────── Присутствие ───────────────
 
@@ -315,8 +409,15 @@ namespace PISMO.Views
                         if (payload == "group")
                         {
                             if (InGroup && sessionId == _currentGroupId) LoadMessages();
+                            NotifyNew("Сообщение в группе", "Открыть PISMO");
                         }
-                        else if (_currentPartnerId > 0) LoadMessages();
+                        else
+                        {
+                            if (_currentPartnerId > 0) LoadMessages();
+                            // Имя берём из карточки: тянуть его из базы ради
+                            // заголовка уведомления — лишний запрос.
+                            NotifyNew(NameOf(senderId), "Новое сообщение");
+                        }
                         LoadConversations();
                         break;
 
@@ -331,6 +432,7 @@ namespace PISMO.Views
 
                     case "edit":
                     case "pin":
+                    case "reaction":
                         // Правка, удаление или закреп — перечитываем открытый
                         // чат. Число сообщений при этом не меняется, поэтому
                         // обычный опрос такого не замечает вовсе.
@@ -695,6 +797,14 @@ namespace PISMO.Views
                     : PinsRepository.PinnedIds(0, UserSession.EffectiveId, _currentPartnerId);
                 foreach (var msg in messages) msg.IsPinned = pinned.Contains(msg.Id);
 
+                // Реакции — тоже одним запросом на всю страницу.
+                var ids = new List<int>();
+                foreach (var msg in messages) ids.Add(msg.Id);
+                _reactions = ReactionsService.ForMessages(
+                    ids,
+                    InGroup ? ReactionsService.Scope.Group : ReactionsService.Scope.Direct,
+                    UserSession.EffectiveId);
+
                 string lastDate = "";
                 foreach (var m in messages)
                 {
@@ -742,7 +852,17 @@ namespace PISMO.Views
             Delete = async msg => await DeleteMessage(msg),
             SaveFile = async msg => await SaveAttachment(msg.Id, msg.FileName),
             PlayMedia = async (msg, circle) => await PlayMedia(msg, circle),
+            Reactions = msg => _reactions.TryGetValue(msg.Id, out var r) ? r : null,
+            React = (msg, emoji) =>
+            {
+                ReactionsService.Toggle(msg.Id,
+                    InGroup ? ReactionsService.Scope.Group : ReactionsService.Scope.Direct,
+                    UserSession.EffectiveId, emoji);
+                LoadMessages();
+            },
         });
+
+        private Dictionary<int, List<ReactionsService.Reaction>> _reactions = new();
 
         // ─────────────── Голосовые и кружки ───────────────
 
@@ -1204,6 +1324,7 @@ namespace PISMO.Views
         // ─────────────── Выход / звонки ───────────────
         private void BtnLogout_Click(object sender, RoutedEventArgs e)
         {
+            _quitting = true;   // выход из аккаунта закрывает окно по-настоящему
             _pollTimer.Stop();
             _presenceTimer.Stop();
             // «Не в сети» — ДО закрытия сокета: после него отправлять уже
@@ -1279,6 +1400,18 @@ namespace PISMO.Views
             _activeCall = new CallWindow(sessionId, isCaller, peerName);
             _activeCall.Closed += (_, _) => _activeCall = null;
             _activeCall.Show();
+        }
+
+        /// <summary>Имя по id из того, что уже нарисовано в списке.</summary>
+        private string NameOf(int uid)
+        {
+            if (_cardByUser.TryGetValue(uid, out var card)
+                && card is Border { Child: Grid g })
+                foreach (var child in g.Children)
+                    if (child is StackPanel sp && sp.Children.Count > 0
+                        && sp.Children[0] is TextBlock tb)
+                        return tb.Text ?? "PISMO";
+            return "PISMO";
         }
 
         private static Color AvatarColor(int uid)
