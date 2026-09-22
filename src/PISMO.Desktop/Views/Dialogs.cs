@@ -83,6 +83,79 @@ namespace PISMO.Views
             return tcs.Task;
         }
 
+        /// <summary>
+        /// Ввод одной строки. Возвращает текст или null, если отказались —
+        /// пустая строка от отказа отличается: «стереть всё» это не то же
+        /// самое, что «передумал».
+        /// </summary>
+        public static Task<string> Prompt(
+            Window owner, string title, string initial = "",
+            string yes = "Сохранить", string no = "Отмена")
+        {
+            var tcs = new TaskCompletionSource<string>();
+
+            var box = new TextBox
+            {
+                Text = initial ?? "",
+                AcceptsReturn = false,
+                Watermark = "Текст",
+            };
+
+            var btnYes = new Button { Content = yes, Padding = new Avalonia.Thickness(20, 8) };
+            btnYes.Classes.Add("blurple");
+            var btnNo = new Button { Content = no, Padding = new Avalonia.Thickness(20, 8) };
+
+            var dlg = new Window
+            {
+                Title = title,
+                Width = 440,
+                SizeToContent = SizeToContent.Height,
+                CanResize = false,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.Parse("#36393f")),
+                Content = new StackPanel
+                {
+                    Margin = new Avalonia.Thickness(20),
+                    Spacing = 14,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = title,
+                            FontSize = 16,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(Colors.White),
+                        },
+                        box,
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Spacing = 8,
+                            Children = { btnNo, btnYes },
+                        },
+                    },
+                },
+            };
+
+            void Accept() { tcs.TrySetResult(box.Text ?? ""); dlg.Close(); }
+
+            btnYes.Click += (_, _) => Accept();
+            btnNo.Click += (_, _) => { tcs.TrySetResult(null); dlg.Close(); };
+            box.KeyDown += (_, e) =>
+            {
+                if (e.Key == Avalonia.Input.Key.Enter) { e.Handled = true; Accept(); }
+                else if (e.Key == Avalonia.Input.Key.Escape) { e.Handled = true; dlg.Close(); }
+            };
+            // Крестик и Escape — тот же отказ, что и кнопка.
+            dlg.Closed += (_, _) => tcs.TrySetResult(null);
+            dlg.Opened += (_, _) => { box.SelectAll(); box.Focus(); };
+
+            if (owner != null) _ = dlg.ShowDialog(owner);
+            else Dispatcher.UIThread.Post(() => dlg.Show());
+            return tcs.Task;
+        }
+
         private static Task Show(Window owner, string message, string title, bool isError)
         {
             var ok = new Button

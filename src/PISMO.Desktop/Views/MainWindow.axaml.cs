@@ -68,6 +68,7 @@ namespace PISMO.Views
             BtnSend.Click += (_, _) => SendCurrent();
             BtnAttach.Click += async (_, _) => await PickAttachment();
             BtnAttachCancel.Click += (_, _) => ClearAttachment();
+            BtnReplyCancel.Click += (_, _) => CancelReply();
             BtnNewGroup.Click += async (_, _) =>
                 await Dialogs.Info(this, "Групповые чаты переносятся на следующем этапе (см. docs/ROADMAP.md).");
             BtnAudioCall.Click += (_, _) => StartOutgoingCall(false);
@@ -267,6 +268,14 @@ namespace PISMO.Views
 
                     case "presence":
                         ApplyPresencePush(senderId, sessionId, payload);
+                        break;
+
+                    case "edit":
+                    case "pin":
+                        // Правка, удаление или закреп — перечитываем открытый
+                        // чат. Число сообщений при этом не меняется, поэтому
+                        // обычный опрос такого не замечает вовсе.
+                        if (_currentPartnerId > 0) LoadMessages();
                         break;
 
                     case "incoming_call":
@@ -484,6 +493,12 @@ namespace PISMO.Views
             try
             {
                 var messages = MessageService.GetMessages(UserSession.EffectiveId, _currentPartnerId);
+
+                // Закрепы — одним запросом на всю переписку, а не по одному на
+                // сообщение: их единицы, а сообщений могут быть сотни.
+                var pinned = PinsRepository.PinnedIds(0, UserSession.EffectiveId, _currentPartnerId);
+                foreach (var msg in messages) msg.IsPinned = pinned.Contains(msg.Id);
+
                 string lastDate = "";
                 foreach (var m in messages)
                 {
@@ -525,6 +540,51 @@ namespace PISMO.Views
         {
             var content = new StackPanel { Spacing = 6 };
 
+            // Удалённое показываем как след, а не прячем: иначе ответы на него
+            // начинают ссылаться в пустоту, и в переписке молча образуется
+            // дыра. На ПК сделано так же.
+            if (m.IsDeleted)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = "сообщение удалено",
+                    FontStyle = FontStyle.Italic, FontSize = 13,
+                    Foreground = new SolidColorBrush(Color.Parse("#72767d")),
+                });
+                return WrapBubble(m, content, muted: true);
+            }
+
+            // Цитата того, на что отвечают.
+            if (m.ReplyToId > 0)
+            {
+                var quote = new StackPanel { Spacing = 1 };
+                quote.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(m.ReplyToSender) ? "сообщение" : m.ReplyToSender,
+                    FontSize = 11, FontWeight = FontWeight.SemiBold,
+                    Foreground = new SolidColorBrush(
+                        m.IsMine ? Color.Parse("#d0d3ff") : Color.Parse("#a0a7b4")),
+                });
+                quote.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(m.ReplyToText) ? "вложение" : m.ReplyToText,
+                    FontSize = 12, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(
+                        m.IsMine ? Color.Parse("#c7cbff") : Color.Parse("#8e939c")),
+                });
+                content.Children.Add(new Border
+                {
+                    // Полоска слева — как в любом мессенджере: она отделяет
+                    // цитату от самого сообщения без лишней рамки.
+                    BorderBrush = new SolidColorBrush(
+                        m.IsMine ? Color.Parse("#ffffff") : Color.Parse("#5865F2")),
+                    BorderThickness = new Thickness(3, 0, 0, 0),
+                    Padding = new Thickness(8, 2, 0, 2),
+                    Child = quote,
+                });
+            }
+
             if (m.HasImage)
             {
                 try
@@ -551,25 +611,240 @@ namespace PISMO.Views
                 });
             }
 
-            content.Children.Add(new TextBlock
+            // Файл — кнопкой: сами байты лежат в базе и тянутся только когда
+            // на неё нажали, иначе каждая отрисовка переписки качала бы все
+            // когда-либо присланные файлы.
+            if (m.HasFile)
             {
-                Text = m.CreatedAt.ToString("HH:mm"), FontSize = 10,
-                Foreground = m.IsMine
-                    ? new SolidColorBrush(Color.Parse("#d0d3ff"))
-                    : new SolidColorBrush(Color.Parse("#72767d")),
-                HorizontalAlignment = HorizontalAlignment.Right,
-            });
+                var save = new Button
+                {
+                    Content = $"📎 {(string.IsNullOrWhiteSpace(m.FileName) ? "файл" : m.FileName)}" +
+                              $"  ·  {HumanSize(m.FileSize)}",
+                    Background = new SolidColorBrush(
+                        m.IsMine ? Color.Parse("#4752c4") : Color.Parse("#40444b")),
+                    Foreground = Brushes.White,
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                    Padding = new Thickness(10, 6),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                };
+                int fileId = m.Id;
+                string fileName = m.FileName;
+                save.Click += async (_, _) => await SaveAttachment(fileId, fileName);
+                content.Children.Add(save);
+            }
 
+            var meta = new StackPanel
+            {
+                Orientation = Orientation.Horizontal, Spacing = 5,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            var metaBrush = new SolidColorBrush(
+                m.IsMine ? Color.Parse("#d0d3ff") : Color.Parse("#72767d"));
+
+            if (m.IsPinned)
+                meta.Children.Add(new TextBlock { Text = "📌", FontSize = 10, Foreground = metaBrush });
+            if (m.IsEdited)
+                meta.Children.Add(new TextBlock
+                {
+                    Text = "изменено", FontSize = 10, FontStyle = FontStyle.Italic, Foreground = metaBrush,
+                });
+            meta.Children.Add(new TextBlock
+            {
+                Text = m.CreatedAt.ToString("HH:mm"), FontSize = 10, Foreground = metaBrush,
+            });
+            // Галочка прочтения — только на своих: у чужих она бессмысленна.
+            if (m.IsMine)
+                meta.Children.Add(new TextBlock
+                {
+                    Text = m.IsRead ? "✓✓" : "✓", FontSize = 10, Foreground = metaBrush,
+                });
+            content.Children.Add(meta);
+
+            return WrapBubble(m, content, muted: false);
+        }
+
+        /// <summary>Общая оболочка пузыря — фон, скругление, меню действий.</summary>
+        private Control WrapBubble(ChatMessage m, Control content, bool muted)
+        {
             var bubble = new Border
             {
-                Background = new SolidColorBrush(m.IsMine ? Color.Parse("#5865F2") : Color.Parse("#2f3136")),
+                Background = new SolidColorBrush(muted
+                    ? Color.Parse("#292b2f")
+                    : (m.IsMine ? Color.Parse("#5865F2") : Color.Parse("#2f3136"))),
                 CornerRadius = new CornerRadius(12),
                 Padding = new Thickness(12, 8),
                 MaxWidth = 460,
                 Child = content,
                 HorizontalAlignment = m.IsMine ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             };
+            if (!muted) bubble.ContextMenu = BuildMessageMenu(m);
             return bubble;
+        }
+
+        /// <summary>Меню сообщения: ответить, закрепить, изменить, удалить.</summary>
+        private ContextMenu BuildMessageMenu(ChatMessage m)
+        {
+            var menu = new ContextMenu();
+            var items = new List<Control>();
+
+            var reply = new MenuItem { Header = "Ответить" };
+            reply.Click += (_, _) => StartReply(m);
+            items.Add(reply);
+
+            if (!string.IsNullOrEmpty(m.Text))
+            {
+                var copy = new MenuItem { Header = "Копировать текст" };
+                copy.Click += async (_, _) =>
+                {
+                    var cb = GetTopLevel(this)?.Clipboard;
+                    if (cb != null) await cb.SetTextAsync(m.Text);
+                };
+                items.Add(copy);
+            }
+
+            var pin = new MenuItem { Header = m.IsPinned ? "Открепить" : "Закрепить" };
+            pin.Click += (_, _) => TogglePin(m);
+            items.Add(pin);
+
+            // Править и удалять можно только своё — это же условие стоит и в
+            // самом UPDATE, чтобы отсутствие пункта в меню не было
+            // единственной защитой.
+            if (m.IsMine)
+            {
+                items.Add(new Separator());
+
+                var edit = new MenuItem { Header = "Изменить" };
+                edit.Click += async (_, _) => await EditMessage(m);
+                items.Add(edit);
+
+                var del = new MenuItem { Header = "Удалить" };
+                del.Click += async (_, _) => await DeleteMessage(m);
+                items.Add(del);
+            }
+
+            menu.ItemsSource = items;
+            return menu;
+        }
+
+        // ─────────────── Действия над сообщением ───────────────
+
+        private int _replyToId;
+
+        private void StartReply(ChatMessage m)
+        {
+            _replyToId = m.Id;
+            ReplyWho.Text = m.IsMine ? "Вы" : (string.IsNullOrWhiteSpace(m.SenderName)
+                ? _currentPartnerName : m.SenderName);
+            ReplyWhat.Text = string.IsNullOrWhiteSpace(m.Text)
+                ? (m.HasImage ? "изображение" : m.HasFile ? "файл" : "сообщение")
+                : m.Text;
+            ReplyBar.IsVisible = true;
+            TxtMessage.Focus();
+        }
+
+        private void CancelReply()
+        {
+            _replyToId = 0;
+            ReplyBar.IsVisible = false;
+        }
+
+        private void TogglePin(ChatMessage m)
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                bool ok = PinsRepository.Toggle(m.Id, 0, UserSession.EffectiveId);
+                string err = PinsRepository.LastError;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    // Молчать об ошибке нельзя: «нажал и ничего» выглядит
+                    // одинаково и при откреплении, и при отказе базы.
+                    if (!ok && !string.IsNullOrEmpty(err))
+                        _ = Dialogs.Error(this, "Не удалось закрепить: " + err);
+                    LoadMessages();
+                });
+            });
+        }
+
+        private async System.Threading.Tasks.Task EditMessage(ChatMessage m)
+        {
+            string text = await Dialogs.Prompt(this, "Изменить сообщение", m.Text);
+            if (text == null) return;                  // отмена
+            text = text.Trim();
+            if (text.Length == 0 || text == m.Text) return;
+
+            try
+            {
+                if (!MessageService.EditMessage(UserSession.EffectiveId, m.Id, text))
+                {
+                    await Dialogs.Error(this, "Изменить не вышло: сообщение не ваше или уже удалено.");
+                    return;
+                }
+                SignalingClient.Instance.Send("edit", _currentPartnerId, m.Id, "");
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.Error(this, "Ошибка правки: " + ex.Message);
+                return;
+            }
+            LoadMessages();
+            LoadConversations();
+        }
+
+        private async System.Threading.Tasks.Task DeleteMessage(ChatMessage m)
+        {
+            if (!await Dialogs.Confirm(this, "Удалить это сообщение?", "Удаление", "Удалить", "Отмена"))
+                return;
+            try
+            {
+                MessageService.DeleteMessage(UserSession.EffectiveId, m.Id);
+                SignalingClient.Instance.Send("edit", _currentPartnerId, m.Id, "");
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.Error(this, "Ошибка удаления: " + ex.Message);
+                return;
+            }
+            LoadMessages();
+            LoadConversations();
+        }
+
+        private async System.Threading.Tasks.Task SaveAttachment(int messageId, string suggestedName)
+        {
+            var top = GetTopLevel(this);
+            if (top?.StorageProvider == null) return;
+
+            var pick = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Сохранить файл",
+                SuggestedFileName = string.IsNullOrWhiteSpace(suggestedName) ? "file" : suggestedName,
+            });
+            if (pick == null) return;
+
+            try
+            {
+                // Байты тянем только сейчас — в переписке лежал один размер.
+                var data = await System.Threading.Tasks.Task.Run(() => MessageService.LoadFile(messageId));
+                if (data == null || data.Length == 0)
+                {
+                    await Dialogs.Error(this, "Файл не найден в базе.");
+                    return;
+                }
+                await using var stream = await pick.OpenWriteAsync();
+                await stream.WriteAsync(data);
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.Error(this, "Не удалось сохранить: " + ex.Message);
+            }
+        }
+
+        private static string HumanSize(long bytes)
+        {
+            if (bytes < 1024) return bytes + " Б";
+            double kb = bytes / 1024.0;
+            return kb > 1024
+                ? string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.0} МБ", kb / 1024.0)
+                : (int)kb + " КБ";
         }
 
         // ─────────────── Отправка ───────────────
@@ -581,13 +856,22 @@ namespace PISMO.Views
 
             try
             {
-                MessageService.SendMessage(UserSession.EffectiveId, _currentPartnerId, text, _pendingImage);
+                if (_pendingImage != null && !_pendingIsImage)
+                    MessageService.SendFile(UserSession.EffectiveId, _currentPartnerId,
+                        text, _pendingImage, _pendingImageName);
+                else if (_replyToId > 0)
+                    MessageService.SendReply(UserSession.EffectiveId, _currentPartnerId,
+                        text, _pendingImage, _replyToId);
+                else
+                    MessageService.SendMessage(UserSession.EffectiveId, _currentPartnerId,
+                        text, _pendingImage);
             }
             catch (Exception ex)
             {
                 _ = Dialogs.Error(this, "Ошибка отправки: " + ex.Message);
                 return;
             }
+            CancelReply();
 
             // Сообщаем адресату сразу. Без этого он узнает о сообщении своим
             // опросом — через несколько секунд.
@@ -606,9 +890,12 @@ namespace PISMO.Views
             var top = GetTopLevel(this);
             if (top?.StorageProvider == null) return;
 
+            // Берём ЛЮБОЙ файл, а не только картинку. Картинки показываем в
+            // переписке, остальное отправляем вложением — как на ПК. Раньше
+            // кроме изображений отправить было нечего вовсе.
             var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Выберите изображение",
+                Title = "Выберите файл",
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
@@ -616,6 +903,7 @@ namespace PISMO.Views
                     {
                         Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp" },
                     },
+                    new FilePickerFileType("Любые файлы") { Patterns = new[] { "*" } },
                 },
             });
 
@@ -624,12 +912,32 @@ namespace PISMO.Views
 
             try
             {
-                await using var stream = await file.OpenReadAsync();
-                using var ms = new MemoryStream();
-                await stream.CopyToAsync(ms);
-                _pendingImage = ms.ToArray();
+                byte[] data;
+                await using (var stream = await file.OpenReadAsync())
+                {
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms);
+                    data = ms.ToArray();
+                }
+
+                // Предел ставим сразу и объясняем: вложение целиком ложится в
+                // одну строку таблицы, и сервер отказывает по max_allowed_packet
+                // сообщением, по которому понять ничего нельзя.
+                if (data.Length > MaxAttachmentBytes)
+                {
+                    await Dialogs.Error(this,
+                        $"Файл {HumanSize(data.Length)} — это больше предела в " +
+                        $"{HumanSize(MaxAttachmentBytes)}.\n\n" +
+                        "Вложение хранится целиком в базе, и файлы такого размера " +
+                        "она не принимает.");
+                    return;
+                }
+
+                _pendingImage = data;
                 _pendingImageName = file.Name;
-                AttachName.Text = "🖼 " + file.Name;
+                _pendingIsImage = IsImageName(file.Name);
+                AttachName.Text = (_pendingIsImage ? "🖼 " : "📎 ") + file.Name
+                                  + "  ·  " + HumanSize(data.Length);
                 AttachPreview.IsVisible = true;
             }
             catch (Exception ex)
@@ -638,10 +946,22 @@ namespace PISMO.Views
             }
         }
 
+        /// <summary>Сколько байт вложения готовы положить в одну строку таблицы.</summary>
+        private const int MaxAttachmentBytes = 16 * 1024 * 1024;
+
+        private bool _pendingIsImage;
+
+        private static bool IsImageName(string name)
+        {
+            string ext = (System.IO.Path.GetExtension(name ?? "") ?? "").ToLowerInvariant();
+            return ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".webp";
+        }
+
         private void ClearAttachment()
         {
             _pendingImage = null;
             _pendingImageName = null;
+            _pendingIsImage = false;
             AttachPreview.IsVisible = false;
         }
 

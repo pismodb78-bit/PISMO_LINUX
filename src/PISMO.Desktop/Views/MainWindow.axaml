@@ -91,6 +91,26 @@
             <!-- Панель ввода -->
             <Border Grid.Row="2" Background="{StaticResource BgChatBrush}" Padding="18,10,18,16">
                 <StackPanel Spacing="8">
+                    <!-- На что отвечаем. Полоска слева — как в самом пузыре,
+                         чтобы связь между ними читалась без подписи. -->
+                    <Border x:Name="ReplyBar" IsVisible="False"
+                            Background="{StaticResource BgInputBrush}" CornerRadius="6"
+                            Padding="10,6" BorderBrush="{StaticResource BlurpleBrush}"
+                            BorderThickness="3,0,0,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="1">
+                                <TextBlock x:Name="ReplyWho" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource BlurpleBrush}" />
+                                <TextBlock x:Name="ReplyWhat" FontSize="12" MaxLines="1"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                            </StackPanel>
+                            <Button x:Name="BtnReplyCancel" Grid.Column="1" Content="✕"
+                                    Background="Transparent" Foreground="{StaticResource RedBrush}"
+                                    Cursor="Hand" Padding="4" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
                     <!-- Превью вложения -->
                     <Border x:Name="AttachPreview" IsVisible="False"
                             Background="{StaticResource BgInputBrush}" CornerRadius="6"
