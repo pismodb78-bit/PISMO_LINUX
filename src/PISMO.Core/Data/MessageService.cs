@@ -293,6 +293,37 @@ namespace PISMO
             return (int)cmd.LastInsertedId;
         }
 
+        /// <summary>
+        /// Голосовое сообщение (WAV) или видео-кружок (PSMOVID1).
+        /// Отдельные колонки, а не file_data: по ним клиент и понимает, что
+        /// это не файл, а то, что надо проиграть прямо в переписке.
+        /// </summary>
+        public static int SendMedia(int myId, int partnerId, byte[] data, bool circle)
+        {
+            using var conn = DBHelper.OpenConnection();
+            string col = circle ? "video_data" : "audio_data";
+            using var cmd = new MySqlCommand(
+                $"INSERT INTO messages (sender_id, receiver_id, text, {col}) " +
+                "VALUES (@s, @r, '', @d)", conn);
+            cmd.Parameters.AddWithValue("@s", myId);
+            cmd.Parameters.AddWithValue("@r", partnerId);
+            cmd.Parameters.Add("@d", MySqlDbType.LongBlob).Value = data ?? Array.Empty<byte>();
+            cmd.ExecuteNonQuery();
+            return (int)cmd.LastInsertedId;
+        }
+
+        /// <summary>Байты голосового или кружка — по нажатию, как и файлы.</summary>
+        public static byte[] LoadMedia(int messageId, bool circle)
+        {
+            using var conn = DBHelper.OpenConnection();
+            string col = circle ? "video_data" : "audio_data";
+            using var cmd = new MySqlCommand(
+                $"SELECT {col} FROM messages WHERE id=@id", conn);
+            cmd.Parameters.AddWithValue("@id", messageId);
+            var o = cmd.ExecuteScalar();
+            return o == null || o == DBNull.Value ? null : (byte[])o;
+        }
+
         /// <summary>Байты вложения — по запросу, а не вместе с перепиской.</summary>
         public static byte[] LoadFile(int messageId)
         {

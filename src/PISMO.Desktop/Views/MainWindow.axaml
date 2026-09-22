@@ -136,10 +136,20 @@
                     </Border>
 
                     <Grid ColumnDefinitions="Auto,*,Auto" Background="{StaticResource BgInputBrush}">
-                        <Button x:Name="BtnAttach" Grid.Column="0" Content="📎"
-                                Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
-                                Cursor="Hand" FontSize="18" Padding="12,8"
-                                VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Button x:Name="BtnAttach" Content="📎" ToolTip.Tip="Файл"
+                                    Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                                    Cursor="Hand" FontSize="18" Padding="10,8"
+                                    VerticalAlignment="Center" />
+                            <Button x:Name="BtnVoice" Content="🎤" ToolTip.Tip="Голосовое сообщение"
+                                    Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                                    Cursor="Hand" FontSize="18" Padding="10,8"
+                                    VerticalAlignment="Center" />
+                            <Button x:Name="BtnCircle" Content="🎥" ToolTip.Tip="Видео-кружок"
+                                    Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                                    Cursor="Hand" FontSize="18" Padding="10,8"
+                                    VerticalAlignment="Center" />
+                        </StackPanel>
                         <TextBox x:Name="TxtMessage" Grid.Column="1" Watermark="Введите сообщение…"
                                  Background="Transparent" AcceptsReturn="False"
                                  VerticalContentAlignment="Center" />

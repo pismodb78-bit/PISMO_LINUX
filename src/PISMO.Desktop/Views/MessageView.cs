@@ -33,6 +33,10 @@ namespace PISMO.Views
             public Action<ChatMessage> SaveFile;
             public Action<ChatMessage> Copy;
 
+            /// <summary>Проиграть голосовое или открыть кружок. Второй
+            /// параметр: true — кружок (video_data), false — голосовое.</summary>
+            public Action<ChatMessage, bool> PlayMedia;
+
             /// <summary>Показывать ли имя отправителя над сообщением.
             /// В личной переписке оно лишнее — там собеседник один.</summary>
             public bool ShowSender;
@@ -142,6 +146,26 @@ namespace PISMO.Views
                 };
                 save.Click += (_, _) => a.SaveFile(m);
                 content.Children.Add(save);
+            }
+
+            // Голосовое и кружок — кнопкой. Их байты, как и файлы, лежат в
+            // базе и тянутся по нажатию: голосовое на минуту это два мегабайта,
+            // и качать их при каждой отрисовке переписки незачем.
+            if ((m.HasAudio || m.HasVideo) && a.PlayMedia != null)
+            {
+                bool circle = m.HasVideo;
+                var play = new Button
+                {
+                    Content = circle ? "🎥 Кружок — открыть" : "▶ Голосовое сообщение",
+                    Background = new SolidColorBrush(
+                        m.IsMine ? Color.Parse("#4752c4") : Color.Parse("#40444b")),
+                    Foreground = Brushes.White,
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                    Padding = new Thickness(10, 6),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                };
+                play.Click += (_, _) => a.PlayMedia(m, circle);
+                content.Children.Add(play);
             }
 
             var meta = new StackPanel

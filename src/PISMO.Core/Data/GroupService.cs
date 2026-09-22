@@ -201,6 +201,32 @@ namespace PISMO
             return cmd.ExecuteNonQuery() > 0;
         }
 
+        /// <summary>Голосовое (WAV) или кружок (PSMOVID1) в группу.</summary>
+        public static int SendMedia(int groupId, int myId, byte[] data, bool circle)
+        {
+            using var conn = DBHelper.OpenConnection();
+            string col = circle ? "video_data" : "audio_data";
+            using var cmd = new MySqlCommand(
+                $"INSERT INTO group_messages (group_id, sender_id, text, {col}) " +
+                "VALUES (@g, @s, '', @d)", conn);
+            cmd.Parameters.AddWithValue("@g", groupId);
+            cmd.Parameters.AddWithValue("@s", myId);
+            cmd.Parameters.Add("@d", MySqlDbType.LongBlob).Value = data ?? Array.Empty<byte>();
+            cmd.ExecuteNonQuery();
+            return (int)cmd.LastInsertedId;
+        }
+
+        public static byte[] LoadMedia(int messageId, bool circle)
+        {
+            using var conn = DBHelper.OpenConnection();
+            string col = circle ? "video_data" : "audio_data";
+            using var cmd = new MySqlCommand(
+                $"SELECT {col} FROM group_messages WHERE id=@id", conn);
+            cmd.Parameters.AddWithValue("@id", messageId);
+            var o = cmd.ExecuteScalar();
+            return o == null || o == DBNull.Value ? null : (byte[])o;
+        }
+
         public static byte[] LoadFile(int messageId)
         {
             using var conn = DBHelper.OpenConnection();

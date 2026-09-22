@@ -105,6 +105,8 @@ namespace PISMO.Views
             BtnAttach.Click += async (_, _) => await PickAttachment();
             BtnAttachCancel.Click += (_, _) => ClearAttachment();
             BtnReplyCancel.Click += (_, _) => CancelReply();
+            BtnVoice.Click += async (_, _) => await ToggleVoiceNote();
+            BtnCircle.Click += async (_, _) => await RecordCircle();
             BtnNewGroup.Click += async (_, _) =>
             {
                 int id = await GroupDialogs.Create(this, UserSession.EffectiveId);
@@ -161,6 +163,8 @@ namespace PISMO.Views
                 _pollTimer.Stop();
                 _presenceTimer.Stop();
                 DisconnectSignaling();
+                try { _voice?.Cancel(); } catch { }
+                try { PISMO.Media.VoiceNote.StopPlayback(); } catch { }
                 System.Threading.Tasks.Task.Run(PresenceService.MarkOffline);
             };
         }
@@ -737,7 +741,150 @@ namespace PISMO.Views
             Edit = async msg => await EditMessage(msg),
             Delete = async msg => await DeleteMessage(msg),
             SaveFile = async msg => await SaveAttachment(msg.Id, msg.FileName),
+            PlayMedia = async (msg, circle) => await PlayMedia(msg, circle),
         });
+
+        // ─────────────── Голосовые и кружки ───────────────
+
+        private PISMO.Media.VoiceNote _voice;
+        private DispatcherTimer _voiceTimer;
+
+        /// <summary>
+        /// Нажали 🎤 — пишем, нажали ещё раз — отправляем. Не «зажать и
+        /// держать»: на настольном компьютере держать кнопку мышью минуту
+        /// неудобно, и Windows-версия сделана так же.
+        /// </summary>
+        private async System.Threading.Tasks.Task ToggleVoiceNote()
+        {
+            if (!InGroup && _currentPartnerId < 0) return;
+
+            if (_voice is { IsRecording: true })
+            {
+                var wav = _voice.Stop();
+                StopVoiceTimer();
+                if (wav == null)
+                {
+                    await Dialogs.Info(this, "Слишком коротко — ничего не отправлено.", "Голосовое");
+                    return;
+                }
+                SendMedia(wav, circle: false);
+                return;
+            }
+
+            if (!PISMO.Media.VoiceNote.CanRecord)
+            {
+                // Говорим ровно то, чего не хватает и как это поставить:
+                // «не удалось записать» отправило бы человека гадать.
+                await Dialogs.Error(this,
+                    "Не найден arecord — записывать нечем.
+
+" +
+                    "Он входит в alsa-utils:
+" +
+                    "  Arch:   sudo pacman -S alsa-utils
+" +
+                    "  Debian: sudo apt install alsa-utils",
+                    "Голосовое сообщение");
+                return;
+            }
+
+            _voice = new PISMO.Media.VoiceNote();
+            if (!_voice.Start())
+            {
+                await Dialogs.Error(this, "Микрофон не открылся.");
+                return;
+            }
+
+            // Пока пишем — счётчик прямо на кнопке: иначе непонятно, идёт
+            // запись или нажатие не сработало.
+            _voiceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _voiceTimer.Tick += (_, _) =>
+            {
+                var t = _voice?.Elapsed ?? TimeSpan.Zero;
+                BtnVoice.Content = $"⏹ {t:mm\:ss}";
+            };
+            _voiceTimer.Start();
+            BtnVoice.Content = "⏹ 00:00";
+            BtnVoice.Foreground = new SolidColorBrush(Color.Parse("#f04747"));
+        }
+
+        private void StopVoiceTimer()
+        {
+            try { _voiceTimer?.Stop(); } catch { }
+            _voiceTimer = null;
+            BtnVoice.Content = "🎤";
+            BtnVoice.Foreground = new SolidColorBrush(Color.Parse("#72767d"));
+        }
+
+        private async System.Threading.Tasks.Task RecordCircle()
+        {
+            if (!InGroup && _currentPartnerId < 0) return;
+
+            var blob = await CircleRecorderDialog.Record(this);
+            if (blob == null) return;
+            SendMedia(blob, circle: true);
+        }
+
+        private void SendMedia(byte[] data, bool circle)
+        {
+            try
+            {
+                if (InGroup)
+                    GroupService.SendMedia(_currentGroupId, UserSession.EffectiveId, data, circle);
+                else
+                    MessageService.SendMedia(UserSession.EffectiveId, _currentPartnerId, data, circle);
+            }
+            catch (Exception ex)
+            {
+                _ = Dialogs.Error(this, "Не удалось отправить: " + ex.Message);
+                return;
+            }
+
+            try
+            {
+                if (InGroup) SignalingClient.Instance.Send("new_message", 0, _currentGroupId, "group");
+                else SignalingClient.Instance.Send("new_message", _currentPartnerId, 0, "");
+            }
+            catch { }
+
+            LoadMessages();
+            LoadConversations();
+        }
+
+        private async System.Threading.Tasks.Task PlayMedia(ChatMessage m, bool circle)
+        {
+            bool grp = InGroup;
+            var data = await System.Threading.Tasks.Task.Run(() =>
+                grp ? GroupService.LoadMedia(m.Id, circle) : MessageService.LoadMedia(m.Id, circle));
+
+            if (data == null || data.Length == 0)
+            {
+                await Dialogs.Error(this, "Запись не найдена в базе.");
+                return;
+            }
+
+            if (!circle)
+            {
+                if (!PISMO.Media.VoiceNote.CanPlay)
+                {
+                    await Dialogs.Error(this,
+                        "Не найден aplay — проигрывать нечем.
+
+" +
+                        "Он входит в alsa-utils:
+" +
+                        "  Arch:   sudo pacman -S alsa-utils
+" +
+                        "  Debian: sudo apt install alsa-utils",
+                        "Голосовое сообщение");
+                    return;
+                }
+                PISMO.Media.VoiceNote.Play(data);
+                return;
+            }
+
+            await CirclePlayerDialog.Show(this, data);
+        }
 
         // ─────────────── Действия над сообщением ───────────────
 
