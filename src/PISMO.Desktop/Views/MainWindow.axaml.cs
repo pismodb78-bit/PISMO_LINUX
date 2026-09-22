@@ -19,6 +19,13 @@ namespace PISMO.Views
     {
         private int _currentPartnerId = -1;
         private string _currentPartnerName = "";
+        // Открыта группа, а не личная переписка. −1 — не открыта.
+        // Взаимоисключающе с _currentPartnerId: открыто ровно одно.
+        private int _currentGroupId = -1;
+        // Какой максимальный чужой id мы уже видели в каждой группе.
+        // Прочтений у групп нет (в group_messages нет is_read), поэтому
+        // «новое» определяется так же, как на ПК, — своей отметкой.
+        private readonly Dictionary<int, int> _groupSeen = new();
         private byte[] _pendingImage;
         private string _pendingImageName;
         private int _lastTotalCount = -1;
@@ -70,7 +77,21 @@ namespace PISMO.Views
             BtnAttachCancel.Click += (_, _) => ClearAttachment();
             BtnReplyCancel.Click += (_, _) => CancelReply();
             BtnNewGroup.Click += async (_, _) =>
-                await Dialogs.Info(this, "Групповые чаты переносятся на следующем этапе (см. docs/ROADMAP.md).");
+            {
+                int id = await GroupDialogs.Create(this, UserSession.EffectiveId);
+                if (id <= 0) return;
+                LoadConversations();
+                // Сразу открываем созданное: иначе человек ищет свою же
+                // группу в списке, только что её заведя.
+                foreach (var g in GroupService.GetGroups(UserSession.EffectiveId))
+                    if (g.Id == id) { OpenGroup(g.Id, g.Name, g.MemberCount, g.MaxMessageId); break; }
+            };
+            BtnMembers.Click += async (_, _) =>
+            {
+                if (!InGroup) return;
+                if (await GroupDialogs.Members(this, _currentGroupId, UserSession.EffectiveId))
+                    LoadConversations();
+            };
             BtnAudioCall.Click += (_, _) => StartOutgoingCall(false);
             BtnVideoCall.Click += (_, _) => StartOutgoingCall(true);
 
@@ -255,9 +276,14 @@ namespace PISMO.Views
                 switch (type)
                 {
                     case "new_message":
-                        // Открытый чат перечитываем сразу; список — ради
-                        // непрочитанных и порядка.
-                        if (_currentPartnerId > 0) LoadMessages();
+                        // Для группы sessionId — её номер: перечитываем, только
+                        // если открыта именно она. Для личной — только если
+                        // пишет открытый собеседник.
+                        if (payload == "group")
+                        {
+                            if (InGroup && sessionId == _currentGroupId) LoadMessages();
+                        }
+                        else if (_currentPartnerId > 0) LoadMessages();
                         LoadConversations();
                         break;
 
@@ -275,7 +301,11 @@ namespace PISMO.Views
                         // Правка, удаление или закреп — перечитываем открытый
                         // чат. Число сообщений при этом не меняется, поэтому
                         // обычный опрос такого не замечает вовсе.
-                        if (_currentPartnerId > 0) LoadMessages();
+                        if (payload == "group")
+                        {
+                            if (InGroup && sessionId == _currentGroupId) LoadMessages();
+                        }
+                        else if (InGroup || _currentPartnerId > 0) LoadMessages();
                         break;
 
                     case "incoming_call":
@@ -305,6 +335,18 @@ namespace PISMO.Views
 
             try
             {
+                // Группы сверху — они не устаревают так, как переписка, и
+                // искать их среди десятков личных диалогов неудобно.
+                var groups = GroupService.GetGroups(myId);
+                if (groups.Count > 0)
+                {
+                    UserListPanel.Children.Add(SectionHeader("ГРУППЫ"));
+                    foreach (var g in groups) UserListPanel.Children.Add(BuildGroupCard(g));
+                    UserListPanel.Children.Add(SectionHeader(
+                        UserSession.Role == "admin" && !UserSession.IsImpersonating
+                            ? "ПОЛЬЗОВАТЕЛИ" : "ЛИЧНЫЕ СООБЩЕНИЯ"));
+                }
+
                 if (UserSession.Role == "admin" && !UserSession.IsImpersonating)
                 {
                     foreach (var u in MessageService.GetAllUsers())
@@ -336,6 +378,85 @@ namespace PISMO.Views
                     }
                     catch { }
                 }, DispatcherPriority.Loaded);
+        }
+
+        private static Control SectionHeader(string text) => new TextBlock
+        {
+            Text = text, FontSize = 10, FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#72767d")),
+            Margin = new Thickness(6, 10, 0, 2),
+        };
+
+        /// <summary>
+        /// Карточка группы. Вместо кружка статуса — значок, а вместо счётчика
+        /// непрочитанных точка: прочтений у групп нет (в group_messages нет
+        /// is_read), и точное число вывести неоткуда. Точка честнее числа,
+        /// взятого с потолка.
+        /// </summary>
+        private Control BuildGroupCard(GroupService.GroupItem g)
+        {
+            var avatar = new Border
+            {
+                Width = 40, Height = 40, CornerRadius = new CornerRadius(12),
+                Background = new SolidColorBrush(AvatarColor(g.Id * 7 + 3)),
+                Child = new TextBlock
+                {
+                    Text = "#", Foreground = Brushes.White,
+                    FontWeight = FontWeight.Bold, FontSize = 18,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+            };
+
+            var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+            texts.Children.Add(new TextBlock
+            {
+                Text = g.Name, Foreground = new SolidColorBrush(Color.Parse("#dcddde")),
+                FontWeight = FontWeight.SemiBold, FontSize = 14,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            texts.Children.Add(new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(g.LastMessage)
+                    ? $"{g.MemberCount} участников" : g.LastMessage,
+                Foreground = new SolidColorBrush(Color.Parse("#72767d")),
+                FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1,
+            });
+
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            Grid.SetColumn(avatar, 0);
+            Grid.SetColumn(texts, 1);
+            texts.Margin = new Thickness(10, 0, 6, 0);
+            grid.Children.Add(avatar);
+            grid.Children.Add(texts);
+
+            _groupSeen.TryGetValue(g.Id, out int seen);
+            if (g.MaxMessageId > seen && g.Id != _currentGroupId)
+            {
+                var dot = new Border
+                {
+                    Width = 10, Height = 10, CornerRadius = new CornerRadius(5),
+                    Background = new SolidColorBrush(Color.Parse("#f04747")),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                Grid.SetColumn(dot, 2);
+                grid.Children.Add(dot);
+            }
+
+            var card = new Border
+            {
+                Padding = new Thickness(8), CornerRadius = new CornerRadius(6),
+                Background = g.Id == _currentGroupId
+                    ? new SolidColorBrush(Color.Parse("#40444b")) : Brushes.Transparent,
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Child = grid,
+            };
+            card.PointerEntered += (_, _) => card.Background = new SolidColorBrush(Color.Parse("#40444b"));
+            card.PointerExited += (_, _) =>
+                card.Background = g.Id == _currentGroupId
+                    ? new SolidColorBrush(Color.Parse("#40444b")) : Brushes.Transparent;
+            card.PointerPressed += (_, _) => OpenGroup(g.Id, g.Name, g.MemberCount, g.MaxMessageId);
+            return card;
         }
 
         private Control BuildCard(int uid, string name, string subtitle, int unread)
@@ -448,10 +569,13 @@ namespace PISMO.Views
         private void OpenChat(int partnerId, string partnerName)
         {
             _currentPartnerId = partnerId;
+            _currentGroupId = -1;
             _currentPartnerName = partnerName;
             ChatHeaderName.Text = partnerName;
             BtnAudioCall.IsVisible = true;
             BtnVideoCall.IsVisible = true;
+            BtnMembers.IsVisible = false;
+            CancelReply();
 
             // Подпись от ПРЕЖНЕГО собеседника убираем сразу: показывать его
             // статус под чужим именем хуже, чем не показывать ничего. Что
@@ -473,6 +597,31 @@ namespace PISMO.Views
             LoadConversations();
         }
 
+        /// <summary>Открывает групповой чат.</summary>
+        private void OpenGroup(int groupId, string groupName, int memberCount, int maxSeenId)
+        {
+            _currentGroupId = groupId;
+            _currentPartnerId = -1;
+            _currentPartnerName = groupName;
+            ChatHeaderName.Text = groupName;
+            ChatHeaderStatus.Text = memberCount == 1 ? "1 участник" : $"{memberCount} участников";
+            ChatHeaderStatus.Foreground = new SolidColorBrush(Color.Parse("#72767d"));
+            ChatHeaderStatus.IsVisible = true;
+
+            // Звонков в группах на Linux пока нет — кнопки прячем, чтобы не
+            // предлагать то, чего не будет.
+            BtnAudioCall.IsVisible = false;
+            BtnVideoCall.IsVisible = false;
+            BtnMembers.IsVisible = true;
+            CancelReply();
+
+            // Открыли — значит прочитали до этого места.
+            _groupSeen[groupId] = maxSeenId;
+
+            LoadMessages();
+            LoadConversations();
+        }
+
         private void DoImpersonate(int uid, string name)
         {
             UserSession.ImpersonatedId = uid;
@@ -485,18 +634,25 @@ namespace PISMO.Views
         }
 
         // ─────────────── Загрузка сообщений ───────────────
+        /// <summary>Открыта группа, а не личная переписка.</summary>
+        private bool InGroup => _currentGroupId >= 0;
+
         private void LoadMessages()
         {
-            if (_currentPartnerId < 0) return;
+            if (!InGroup && _currentPartnerId < 0) return;
             MessagesPanel.Children.Clear();
 
             try
             {
-                var messages = MessageService.GetMessages(UserSession.EffectiveId, _currentPartnerId);
+                var messages = InGroup
+                    ? GroupService.GetMessages(_currentGroupId)
+                    : MessageService.GetMessages(UserSession.EffectiveId, _currentPartnerId);
 
                 // Закрепы — одним запросом на всю переписку, а не по одному на
                 // сообщение: их единицы, а сообщений могут быть сотни.
-                var pinned = PinsRepository.PinnedIds(0, UserSession.EffectiveId, _currentPartnerId);
+                var pinned = InGroup
+                    ? PinsRepository.PinnedIds(1, UserSession.EffectiveId, _currentGroupId)
+                    : PinsRepository.PinnedIds(0, UserSession.EffectiveId, _currentPartnerId);
                 foreach (var msg in messages) msg.IsPinned = pinned.Contains(msg.Id);
 
                 string lastDate = "";
@@ -750,9 +906,10 @@ namespace PISMO.Views
 
         private void TogglePin(ChatMessage m)
         {
+            int scope = InGroup ? 1 : 0;
             System.Threading.Tasks.Task.Run(() =>
             {
-                bool ok = PinsRepository.Toggle(m.Id, 0, UserSession.EffectiveId);
+                bool ok = PinsRepository.Toggle(m.Id, scope, UserSession.EffectiveId);
                 string err = PinsRepository.LastError;
                 Dispatcher.UIThread.Post(() =>
                 {
@@ -774,12 +931,15 @@ namespace PISMO.Views
 
             try
             {
-                if (!MessageService.EditMessage(UserSession.EffectiveId, m.Id, text))
+                bool ok = InGroup
+                    ? GroupService.Edit(UserSession.EffectiveId, m.Id, text)
+                    : MessageService.EditMessage(UserSession.EffectiveId, m.Id, text);
+                if (!ok)
                 {
                     await Dialogs.Error(this, "Изменить не вышло: сообщение не ваше или уже удалено.");
                     return;
                 }
-                SignalingClient.Instance.Send("edit", _currentPartnerId, m.Id, "");
+                AnnounceChange("edit", m.Id);
             }
             catch (Exception ex)
             {
@@ -796,8 +956,9 @@ namespace PISMO.Views
                 return;
             try
             {
-                MessageService.DeleteMessage(UserSession.EffectiveId, m.Id);
-                SignalingClient.Instance.Send("edit", _currentPartnerId, m.Id, "");
+                if (InGroup) GroupService.Delete(UserSession.EffectiveId, m.Id);
+                else MessageService.DeleteMessage(UserSession.EffectiveId, m.Id);
+                AnnounceChange("edit", m.Id);
             }
             catch (Exception ex)
             {
@@ -823,7 +984,9 @@ namespace PISMO.Views
             try
             {
                 // Байты тянем только сейчас — в переписке лежал один размер.
-                var data = await System.Threading.Tasks.Task.Run(() => MessageService.LoadFile(messageId));
+                bool grp = InGroup;
+                var data = await System.Threading.Tasks.Task.Run(() =>
+                    grp ? GroupService.LoadFile(messageId) : MessageService.LoadFile(messageId));
                 if (data == null || data.Length == 0)
                 {
                     await Dialogs.Error(this, "Файл не найден в базе.");
@@ -838,6 +1001,23 @@ namespace PISMO.Views
             }
         }
 
+        /// <summary>
+        /// Сообщает об изменении сообщения. У личной переписки адресат один,
+        /// у группы его нет вовсе — состав знает база, а не отправитель,
+        /// поэтому уходит широковещательно с номером группы.
+        /// </summary>
+        private void AnnounceChange(string type, int messageId)
+        {
+            try
+            {
+                if (InGroup)
+                    SignalingClient.Instance.Send(type, 0, _currentGroupId, "group");
+                else
+                    SignalingClient.Instance.Send(type, _currentPartnerId, messageId, "");
+            }
+            catch { }
+        }
+
         private static string HumanSize(long bytes)
         {
             if (bytes < 1024) return bytes + " Б";
@@ -850,21 +1030,26 @@ namespace PISMO.Views
         // ─────────────── Отправка ───────────────
         private void SendCurrent()
         {
-            if (_currentPartnerId < 0) return;
+            if (!InGroup && _currentPartnerId < 0) return;
             string text = (TxtMessage.Text ?? "").Trim();
             if (string.IsNullOrEmpty(text) && _pendingImage == null) return;
 
+            int me = UserSession.EffectiveId;
             try
             {
-                if (_pendingImage != null && !_pendingIsImage)
-                    MessageService.SendFile(UserSession.EffectiveId, _currentPartnerId,
-                        text, _pendingImage, _pendingImageName);
+                if (InGroup)
+                {
+                    if (_pendingImage != null && !_pendingIsImage)
+                        GroupService.SendFile(_currentGroupId, me, text, _pendingImage, _pendingImageName);
+                    else
+                        GroupService.Send(_currentGroupId, me, text, _pendingImage, _replyToId);
+                }
+                else if (_pendingImage != null && !_pendingIsImage)
+                    MessageService.SendFile(me, _currentPartnerId, text, _pendingImage, _pendingImageName);
                 else if (_replyToId > 0)
-                    MessageService.SendReply(UserSession.EffectiveId, _currentPartnerId,
-                        text, _pendingImage, _replyToId);
+                    MessageService.SendReply(me, _currentPartnerId, text, _pendingImage, _replyToId);
                 else
-                    MessageService.SendMessage(UserSession.EffectiveId, _currentPartnerId,
-                        text, _pendingImage);
+                    MessageService.SendMessage(me, _currentPartnerId, text, _pendingImage);
             }
             catch (Exception ex)
             {
@@ -873,9 +1058,17 @@ namespace PISMO.Views
             }
             CancelReply();
 
-            // Сообщаем адресату сразу. Без этого он узнает о сообщении своим
-            // опросом — через несколько секунд.
-            try { SignalingClient.Instance.Send("new_message", _currentPartnerId, 0, ""); }
+            // Сообщаем сразу. Без этого получатель узнает о сообщении своим
+            // опросом — через несколько секунд. Для группы адресата нет: её
+            // состав знает база, а не отправитель, поэтому событие уходит
+            // широковещательно с номером группы, как на ПК и на телефоне.
+            try
+            {
+                if (InGroup)
+                    SignalingClient.Instance.Send("new_message", 0, _currentGroupId, "group");
+                else
+                    SignalingClient.Instance.Send("new_message", _currentPartnerId, 0, "");
+            }
             catch { }
 
             TxtMessage.Text = "";
@@ -982,8 +1175,37 @@ namespace PISMO.Views
                     }
                     LoadConversations();
                 }
+
+                // Группы считаются отдельно: их сообщения лежат в другой
+                // таблице, и счётчик личной переписки о них ничего не знает.
+                // Сверяем один максимальный id на все группы — это одно
+                // движение к концу индекса, сколько бы сообщений ни было.
+                int groupMax = SafeGroupMaxId();
+                if (groupMax != _lastGroupMax)
+                {
+                    _lastGroupMax = groupMax;
+                    if (InGroup) LoadMessages();
+                    LoadConversations();
+                }
             }
             catch { /* поллинг не должен ронять UI */ }
+        }
+
+        private int _lastGroupMax = -1;
+
+        /// <summary>Максимальный id сообщения среди МОИХ групп. Дёшево.</summary>
+        private int SafeGroupMaxId()
+        {
+            try
+            {
+                using var conn = DBHelper.OpenConnection();
+                using var cmd = new MySql.Data.MySqlClient.MySqlCommand(
+                    "SELECT COALESCE(MAX(gm.id),0) FROM group_messages gm " +
+                    "JOIN group_members mem ON mem.group_id = gm.group_id AND mem.user_id=@me", conn);
+                cmd.Parameters.AddWithValue("@me", UserSession.EffectiveId);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch { return _lastGroupMax; }
         }
 
         private int SafeTotalCount()

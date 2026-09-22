@@ -78,6 +78,9 @@
                         <Button x:Name="BtnVideoCall" Content="📹" ToolTip.Tip="Видеозвонок"
                                 Background="Transparent" Foreground="White" Cursor="Hand"
                                 FontSize="16" Padding="6" IsVisible="False" />
+                        <Button x:Name="BtnMembers" Content="👥" ToolTip.Tip="Участники группы"
+                                Background="Transparent" Foreground="White" Cursor="Hand"
+                                FontSize="16" Padding="6" IsVisible="False" />
                     </StackPanel>
                 </Grid>
             </Border>
