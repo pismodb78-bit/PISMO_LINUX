@@ -49,6 +49,7 @@ namespace PISMO.Views
         private bool _windowActive = true;
         private Action<string, int, int, string> _wsHandler;
         private ServersWindow _servers;
+        private FriendsWindow _friends;
 
         // Карточки и кружки статуса на них — чтобы перекрашивать точку, не
         // пересобирая список: пересборка сбрасывает прокрутку.
@@ -75,6 +76,22 @@ namespace PISMO.Views
             // четыре колонки, и втискивать её сюда значило бы ломать и то и
             // другое. Окно НЕ модальное: из него хочется переключаться в
             // личные сообщения и обратно, не закрывая.
+            BtnProfile.Click += async (_, _) =>
+                await ProfileDialog.Show(this, UserSession.EffectiveId);
+
+            BtnFriends.Click += (_, _) =>
+            {
+                if (_friends != null && _friends.IsVisible) { _friends.Activate(); return; }
+                _friends = new FriendsWindow
+                {
+                    // Из списка друзей «Написать» должно открывать переписку
+                    // здесь, а не заводить ещё одно окно.
+                    OpenChat = (uid, name) => OpenChat(uid, name),
+                };
+                _friends.Closed += (_, _) => _friends = null;
+                _friends.Show(this);
+            };
+
             BtnServers.Click += (_, _) =>
             {
                 if (_servers != null && _servers.IsVisible) { _servers.Activate(); return; }
@@ -569,6 +586,13 @@ namespace PISMO.Views
                     e.GetCurrentPoint(card).Properties.IsRightButtonPressed)
                 {
                     DoImpersonate(uid, name);
+                    return;
+                }
+                if (e.GetCurrentPoint(card).Properties.IsRightButtonPressed)
+                {
+                    // Профиль по правой кнопке: отдельный значок в каждой
+                    // карточке занял бы место у имени и непрочитанных.
+                    _ = ProfileDialog.Show(this, uid);
                     return;
                 }
                 OpenChat(uid, name);

@@ -42,6 +42,12 @@
             <!-- Нижняя панель аккаунта -->
             <Border Grid.Row="3" Background="{StaticResource BgDarkestBrush}" Padding="10,8">
                 <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="BtnFriends" Content="👤" ToolTip.Tip="Друзья"
+                            Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                            Cursor="Hand" Padding="10,6" CornerRadius="4" />
+                    <Button x:Name="BtnProfile" Content="🪪" ToolTip.Tip="Мой профиль"
+                            Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                            Cursor="Hand" Padding="10,6" CornerRadius="4" />
                     <Button x:Name="BtnServers" Content="🌐" ToolTip.Tip="Серверы"
                             Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
                             Cursor="Hand" Padding="10,6" CornerRadius="4" />
