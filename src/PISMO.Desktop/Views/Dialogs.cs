@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -151,6 +152,70 @@ namespace PISMO.Views
             dlg.Closed += (_, _) => tcs.TrySetResult(null);
             dlg.Opened += (_, _) => { box.SelectAll(); box.Focus(); };
 
+            if (owner != null) _ = dlg.ShowDialog(owner);
+            else Dispatcher.UIThread.Post(() => dlg.Show());
+            return tcs.Task;
+        }
+
+        /// <summary>
+        /// Выбор одного из нескольких действий. Возвращает выбранную строку
+        /// или null, если закрыли.
+        ///
+        /// Список, а не череда вопросов «да/нет»: три подряд подтверждения
+        /// ради одного действия — верный способ нажать не то.
+        /// </summary>
+        public static Task<string> Choose(Window owner, string title, IEnumerable<string> options)
+        {
+            var tcs = new TaskCompletionSource<string>();
+            var panel = new StackPanel { Spacing = 6 };
+
+            // Окно объявляем заранее: кнопки внутри должны его закрывать, а
+            // создаётся оно ниже — без этой переменной пришлось бы искать
+            // корень по дереву и тянуть ради одной строки лишний using.
+            Window dlg = null;
+
+            foreach (var option in options)
+            {
+                var b = new Button
+                {
+                    Content = option,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Avalonia.Thickness(12, 8),
+                };
+                string captured = option;
+                b.Click += (_, _) => { tcs.TrySetResult(captured); dlg?.Close(); };
+                panel.Children.Add(b);
+            }
+
+            dlg = new Window
+            {
+                Title = title,
+                Width = 380,
+                SizeToContent = SizeToContent.Height,
+                CanResize = false,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.Parse("#36393f")),
+                Content = new StackPanel
+                {
+                    Margin = new Avalonia.Thickness(20),
+                    Spacing = 14,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = title,
+                            FontSize = 16,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(Colors.White),
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                        },
+                        panel,
+                    },
+                },
+            };
+
+            dlg.Closed += (_, _) => tcs.TrySetResult(null);
             if (owner != null) _ = dlg.ShowDialog(owner);
             else Dispatcher.UIThread.Post(() => dlg.Show());
             return tcs.Task;

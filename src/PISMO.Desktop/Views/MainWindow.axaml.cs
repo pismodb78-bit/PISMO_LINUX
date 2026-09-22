@@ -48,6 +48,7 @@ namespace PISMO.Views
         private DateTime _lastActiveAt = DateTime.UtcNow;
         private bool _windowActive = true;
         private Action<string, int, int, string> _wsHandler;
+        private ServersWindow _servers;
 
         // Карточки и кружки статуса на них — чтобы перекрашивать точку, не
         // пересобирая список: пересборка сбрасывает прокрутку.
@@ -70,6 +71,17 @@ namespace PISMO.Views
 
             BtnRefresh.Click += (_, _) => LoadConversations();
             BtnSettings.Click += (_, _) => new SettingsWindow().ShowDialog(this);
+            // Серверы — отдельным окном, а не вкладкой: у них своя разметка в
+            // четыре колонки, и втискивать её сюда значило бы ломать и то и
+            // другое. Окно НЕ модальное: из него хочется переключаться в
+            // личные сообщения и обратно, не закрывая.
+            BtnServers.Click += (_, _) =>
+            {
+                if (_servers != null && _servers.IsVisible) { _servers.Activate(); return; }
+                _servers = new ServersWindow();
+                _servers.Closed += (_, _) => _servers = null;
+                _servers.Show(this);
+            };
             BtnChangePw.Click += (_, _) => new ChangePasswordWindow().ShowDialog(this);
             BtnLogout.Click += BtnLogout_Click;
             BtnSend.Click += (_, _) => SendCurrent();

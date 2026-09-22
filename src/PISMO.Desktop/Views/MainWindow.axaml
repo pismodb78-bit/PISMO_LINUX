@@ -42,6 +42,9 @@
             <!-- Нижняя панель аккаунта -->
             <Border Grid.Row="3" Background="{StaticResource BgDarkestBrush}" Padding="10,8">
                 <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="BtnServers" Content="🌐" ToolTip.Tip="Серверы"
+                            Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                            Cursor="Hand" Padding="10,6" CornerRadius="4" />
                     <Button x:Name="BtnSettings" Content="⚙" ToolTip.Tip="Настройки"
                             Background="Transparent" Foreground="White" Cursor="Hand"
                             Padding="8,4" />

@@ -1,0 +1,116 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PISMO.Views.ServersWindow"
+        Title="PISMO — Серверы" Width="1180" Height="740"
+        MinWidth="900" MinHeight="560"
+        Background="{StaticResource BgChatBrush}"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid ColumnDefinitions="72,220,*,200">
+
+        <!-- Полоса серверов -->
+        <Border Grid.Column="0" Background="{StaticResource BgDarkestBrush}">
+            <DockPanel>
+                <Button x:Name="BtnAddServer" DockPanel.Dock="Bottom" Content="＋"
+                        ToolTip.Tip="Создать или войти по номеру"
+                        Background="Transparent" Foreground="{StaticResource GreenBrush}"
+                        FontSize="22" Cursor="Hand" Margin="0,6,0,10"
+                        HorizontalAlignment="Stretch" />
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="ServerRail" Margin="0,10" Spacing="8" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Каналы -->
+        <Border Grid.Column="1" Background="{StaticResource BgSidebarBrush}">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Background="{StaticResource BgDarkestBrush}" Padding="14,12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock x:Name="ServerName" Text="Выберите сервер"
+                                   Foreground="White" FontWeight="Bold" FontSize="14"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <Button x:Name="BtnServerMenu" Grid.Column="1" Content="⋮"
+                                Background="Transparent" Foreground="White"
+                                Cursor="Hand" Padding="6,0" IsVisible="False" />
+                    </Grid>
+                </Border>
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="ChannelList" Margin="8,8" Spacing="2" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Переписка канала -->
+        <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto">
+            <Border Grid.Row="0" Background="{StaticResource BgChatBrush}"
+                    BorderBrush="{StaticResource BgDarkestBrush}" BorderThickness="0,0,0,1"
+                    Padding="18,12">
+                <TextBlock x:Name="ChannelTitle" Text="Канал не выбран"
+                           Foreground="White" FontWeight="Bold" FontSize="15" />
+            </Border>
+
+            <ScrollViewer x:Name="ChannelScroll" Grid.Row="1"
+                          HorizontalScrollBarVisibility="Disabled" Padding="18,12">
+                <StackPanel x:Name="ChannelMessages" Spacing="8" />
+            </ScrollViewer>
+
+            <Border Grid.Row="2" Background="{StaticResource BgChatBrush}" Padding="18,10,18,16">
+                <StackPanel Spacing="8">
+                    <Border x:Name="ChReplyBar" IsVisible="False"
+                            Background="{StaticResource BgInputBrush}" CornerRadius="6"
+                            Padding="10,6" BorderBrush="{StaticResource BlurpleBrush}"
+                            BorderThickness="3,0,0,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="1">
+                                <TextBlock x:Name="ChReplyWho" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource BlurpleBrush}" />
+                                <TextBlock x:Name="ChReplyWhat" FontSize="12" MaxLines="1"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                            </StackPanel>
+                            <Button x:Name="BtnChReplyCancel" Grid.Column="1" Content="✕"
+                                    Background="Transparent" Foreground="{StaticResource RedBrush}"
+                                    Cursor="Hand" Padding="4" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="ChAttachPreview" IsVisible="False"
+                            Background="{StaticResource BgInputBrush}" CornerRadius="6"
+                            Padding="10" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock x:Name="ChAttachName" Foreground="{StaticResource TextNormalBrush}"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="BtnChAttachCancel" Content="✕" Background="Transparent"
+                                    Foreground="{StaticResource RedBrush}" Cursor="Hand" Padding="4" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid ColumnDefinitions="Auto,*,Auto" Background="{StaticResource BgInputBrush}">
+                        <Button x:Name="BtnChAttach" Grid.Column="0" Content="📎"
+                                Background="Transparent" Foreground="{StaticResource TextMutedBrush}"
+                                Cursor="Hand" FontSize="18" Padding="12,8" VerticalAlignment="Center" />
+                        <TextBox x:Name="ChInput" Grid.Column="1" Watermark="Сообщение в канал…"
+                                 Background="Transparent" AcceptsReturn="False"
+                                 VerticalContentAlignment="Center" IsEnabled="False" />
+                        <Button x:Name="BtnChSend" Grid.Column="2" Content="➤"
+                                Background="Transparent" Foreground="{StaticResource BlurpleBrush}"
+                                Cursor="Hand" FontSize="18" Padding="12,8" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Участники -->
+        <Border Grid.Column="3" Background="{StaticResource BgSidebarBrush}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="УЧАСТНИКИ" FontSize="10"
+                           FontWeight="Bold" Foreground="{StaticResource TextMutedBrush}"
+                           Margin="14,14,0,6" />
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="MemberList" Margin="8,0" Spacing="2" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>
