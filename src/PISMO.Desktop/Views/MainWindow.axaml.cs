@@ -29,6 +29,24 @@ namespace PISMO.Views
         private bool _incomingOpen;
         private CallWindow _activeCall;
 
+        // Присутствие: uid -> 0 не в сети, 1 бездействует, 2 в сети.
+        private readonly Dictionary<int, int> _presence = new();
+        // Когда статус этого человека пришёл по сокету. По этой отметке снимок
+        // из базы не затирает то, что пришло секунду назад: запрос уходит
+        // раньше, чем приходит ответ, и за это время человек успевает отойти.
+        private readonly Dictionary<int, DateTime> _presencePushedAt = new();
+        private readonly DispatcherTimer _presenceTimer;
+        // Момент, когда окно в последний раз было активным — наш аналог
+        // системного простоя ввода, см. PresenceService.
+        private DateTime _lastActiveAt = DateTime.UtcNow;
+        private bool _windowActive = true;
+        private Action<string, int, int, string> _wsHandler;
+
+        // Карточки и кружки статуса на них — чтобы перекрашивать точку, не
+        // пересобирая список: пересборка сбрасывает прокрутку.
+        private readonly Dictionary<int, Control> _cardByUser = new();
+        private readonly Dictionary<int, Border> _dotByUser = new();
+
         // Палитра аватарок (детерминированно по id пользователя).
         private static readonly Color[] AvatarColors =
         {
@@ -70,14 +88,206 @@ namespace PISMO.Views
             _pollTimer.Tick += (_, _) => PollTick();
             _pollTimer.Start();
 
-            Closed += (_, _) => _pollTimer.Stop();
+            // Присутствие: тот же период, что у ПК и телефона.
+            _presenceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(PresenceService.TickMs),
+            };
+            _presenceTimer.Tick += (_, _) => PresenceTick();
+            _presenceTimer.Start();
+            PresenceTick();   // сразу, а не через шесть секунд
+
+            // Активность окна — наш признак «человек за компьютером».
+            // Отслеживаем событиями, а не опросом свойства: события есть у
+            // всех платформ Avalonia и работают одинаково.
+            Activated += (_, _) => { _windowActive = true; _lastActiveAt = DateTime.UtcNow; };
+            Deactivated += (_, _) => { _windowActive = false; _lastActiveAt = DateTime.UtcNow; };
+
+            ConnectSignaling();
+
+            Closed += (_, _) =>
+            {
+                _pollTimer.Stop();
+                _presenceTimer.Stop();
+                DisconnectSignaling();
+                System.Threading.Tasks.Task.Run(PresenceService.MarkOffline);
+            };
         }
 
+
+        // ─────────────── Присутствие ───────────────
+
+        /// <summary>
+        /// Простой в секундах. Активностью считаем «окно программы активно» —
+        /// тот же признак, что на телефоне; почему не системный простой ввода,
+        /// объяснено в PresenceService.
+        /// </summary>
+        private int IdleSeconds()
+        {
+            if (_windowActive) { _lastActiveAt = DateTime.UtcNow; return 0; }
+            return (int)(DateTime.UtcNow - _lastActiveAt).TotalSeconds;
+        }
+
+        private void PresenceTick()
+        {
+            int idle = IdleSeconds();
+            PresenceService.Announce(idle);
+
+            // Кого показываем — тех и спрашиваем.
+            var ids = _cardByUser.Keys.ToList();
+            if (_currentPartnerId > 0 && !ids.Contains(_currentPartnerId)) ids.Add(_currentPartnerId);
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                PresenceService.Heartbeat(idle);
+                var fresh = PresenceService.Read(ids);
+                PresenceService.Ago peer = _currentPartnerId > 0
+                    ? PresenceService.ReadOne(_currentPartnerId) : null;
+                int peerId = _currentPartnerId;
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ApplyPresence(fresh);
+                    // Не удалось прочитать — ОСТАВЛЯЕМ то, что написано.
+                    // Прятать подпись на каждом неудачном запросе значит гасить
+                    // статус от одной моргнувшей связи.
+                    if (peer != null && peerId == _currentPartnerId)
+                        ShowPeerStatus(peer.Status, peer.SeenAgo, peer.ActiveAgo);
+                });
+            });
+        }
+
+        /// <summary>Снимок из базы поверх того, что знаем. Поключево: приход по
+        /// сокету добавляет и тех, кого нет в списке, и сравнение длин здесь
+        /// находило бы «изменение» на каждом тике.</summary>
+        private void ApplyPresence(Dictionary<int, int> fresh)
+        {
+            if (fresh == null) return;
+
+            var now = DateTime.UtcNow;
+            foreach (var kv in fresh.Keys.ToList())
+            {
+                // Свежий приход по сокету старше ответа базы — про себя клиент
+                // знает точнее любой строки в ней.
+                if (_presencePushedAt.TryGetValue(kv, out var at)
+                    && (now - at).TotalSeconds < 10
+                    && _presence.TryGetValue(kv, out int pushed))
+                    fresh[kv] = pushed;
+            }
+
+            foreach (var kv in fresh)
+                if (!_presence.TryGetValue(kv.Key, out int v) || v != kv.Value)
+                {
+                    _presence[kv.Key] = kv.Value;
+                    PaintDot(kv.Key, kv.Value);
+                }
+        }
+
+        /// <summary>Пришёл чужой статус по сокету — применяем немедленно.</summary>
+        private void ApplyPresencePush(int senderId, int status, string payload)
+        {
+            if (senderId <= 0 || status < 0 || status > 2) return;
+
+            bool differs = !_presence.TryGetValue(senderId, out int prev) || prev != status;
+            _presence[senderId] = status;
+            _presencePushedAt[senderId] = DateTime.UtcNow;
+            if (differs) PaintDot(senderId, status);
+
+            if (senderId == _currentPartnerId)
+            {
+                int.TryParse(payload, out int idle);
+                ShowPeerStatus(status, 0, Math.Max(0, idle));
+            }
+        }
+
+        private static readonly Color DotOnline = Color.Parse("#3ba55d");
+        private static readonly Color DotIdle = Color.Parse("#faa81a");
+        private static readonly Color DotOffline = Color.Parse("#747f8d");
+
+        private static Color DotColor(int status) =>
+            status == 2 ? DotOnline : status == 1 ? DotIdle : DotOffline;
+
+        /// <summary>Кружок статуса на аватарке карточки, если она на экране.</summary>
+        private void PaintDot(int uid, int status)
+        {
+            if (!_dotByUser.TryGetValue(uid, out var dot)) return;
+            dot.Background = new SolidColorBrush(DotColor(status));
+            dot.IsVisible = true;
+        }
+
+        private void ShowPeerStatus(int status, int seenAgo, int activeAgo)
+        {
+            ChatHeaderStatus.Text = PresenceService.Text(status, seenAgo, activeAgo);
+            ChatHeaderStatus.Foreground = new SolidColorBrush(DotColor(status));
+            ChatHeaderStatus.IsVisible = true;
+        }
+
+        // ─────────────── Сигналинг ───────────────
+
+        private void ConnectSignaling()
+        {
+            _wsHandler = (type, senderId, sessionId, payload) =>
+                Dispatcher.UIThread.Post(() => OnSignal(type, senderId, sessionId, payload));
+            SignalingClient.Instance.OnMessage += _wsHandler;
+            _ = SignalingClient.Instance.ConnectAsync(UserSession.EffectiveId);
+        }
+
+        private void DisconnectSignaling()
+        {
+            try
+            {
+                if (_wsHandler != null) SignalingClient.Instance.OnMessage -= _wsHandler;
+                SignalingClient.Instance.Disconnect();
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Событие из сокета. Всё, что здесь делается, умеет делать и опрос —
+        /// разница только в том, что опрос делает это через несколько секунд.
+        /// Поэтому ни одна ветка не обязана сработать: сервера может не быть.
+        /// </summary>
+        private void OnSignal(string type, int senderId, int sessionId, string payload)
+        {
+            try
+            {
+                switch (type)
+                {
+                    case "new_message":
+                        // Открытый чат перечитываем сразу; список — ради
+                        // непрочитанных и порядка.
+                        if (_currentPartnerId > 0) LoadMessages();
+                        LoadConversations();
+                        break;
+
+                    case "read":
+                        // Собеседник прочитал мои сообщения.
+                        if (senderId == _currentPartnerId) LoadMessages();
+                        break;
+
+                    case "presence":
+                        ApplyPresencePush(senderId, sessionId, payload);
+                        break;
+
+                    case "incoming_call":
+                        CheckIncomingCalls();
+                        break;
+                }
+            }
+            catch { }
+        }
 
         // ─────────────── Список диалогов ───────────────
         private void LoadConversations()
         {
+            // Запоминаем, где стоял ползунок. Список пересобирается на каждое
+            // новое сообщение, и без этого он на каждом сообщении прыгал бы
+            // наверх — прямо посреди чтения.
+            double keepScroll = UserListScroll?.Offset.Y ?? 0;
+
             UserListPanel.Children.Clear();
+            _cardByUser.Clear();
+            _dotByUser.Clear();
             int myId = UserSession.EffectiveId;
 
             SidebarTitle.Text = UserSession.IsImpersonating
@@ -104,6 +314,19 @@ namespace PISMO.Views
             {
                 _ = Dialogs.Error(this, "Ошибка загрузки диалогов: " + ex.Message);
             }
+
+            // Вернуть ползунок можно только после того, как список разложат по
+            // местам: до этого его высота ещё нулевая и прокручивать нечего.
+            if (keepScroll > 0 && UserListScroll != null)
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try
+                    {
+                        double max = Math.Max(0, UserListScroll.Extent.Height - UserListScroll.Viewport.Height);
+                        UserListScroll.Offset = new Vector(UserListScroll.Offset.X, Math.Min(keepScroll, max));
+                    }
+                    catch { }
+                }, DispatcherPriority.Loaded);
         }
 
         private Control BuildCard(int uid, string name, string subtitle, int unread)
@@ -120,6 +343,30 @@ namespace PISMO.Views
                     VerticalAlignment = VerticalAlignment.Center,
                 },
             };
+
+            // Кружок статуса в правом нижнем углу аватарки — как на ПК.
+            // Обводка цветом фона карточки, иначе точка сливается с аватаркой.
+            var dot = new Border
+            {
+                Width = 12, Height = 12, CornerRadius = new CornerRadius(6),
+                BorderBrush = new SolidColorBrush(Color.Parse("#2f3136")),
+                BorderThickness = new Thickness(2),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                // Пока статус неизвестен, точки нет вовсе: серая означала бы
+                // «не в сети», а мы этого ещё не знаем.
+                IsVisible = false,
+            };
+            if (_presence.TryGetValue(uid, out int known))
+            {
+                dot.Background = new SolidColorBrush(DotColor(known));
+                dot.IsVisible = true;
+            }
+            _dotByUser[uid] = dot;
+
+            var avatarBox = new Panel { Width = 40, Height = 40 };
+            avatarBox.Children.Add(avatar);
+            avatarBox.Children.Add(dot);
 
             var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
             texts.Children.Add(new TextBlock
@@ -138,10 +385,10 @@ namespace PISMO.Views
             {
                 ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
             };
-            Grid.SetColumn(avatar, 0);
+            Grid.SetColumn(avatarBox, 0);
             Grid.SetColumn(texts, 1);
             texts.Margin = new Thickness(10, 0, 6, 0);
-            grid.Children.Add(avatar);
+            grid.Children.Add(avatarBox);
             grid.Children.Add(texts);
 
             if (unread > 0)
@@ -184,6 +431,7 @@ namespace PISMO.Views
                 }
                 OpenChat(uid, name);
             };
+            _cardByUser[uid] = card;
             return card;
         }
 
@@ -196,7 +444,20 @@ namespace PISMO.Views
             BtnAudioCall.IsVisible = true;
             BtnVideoCall.IsVisible = true;
 
-            try { MessageService.MarkAsRead(UserSession.EffectiveId, partnerId); }
+            // Подпись от ПРЕЖНЕГО собеседника убираем сразу: показывать его
+            // статус под чужим именем хуже, чем не показывать ничего. Что
+            // знаем — покажем, остальное допишет ближайший тик.
+            ChatHeaderStatus.IsVisible = false;
+            if (_presence.TryGetValue(partnerId, out int known))
+                ShowPeerStatus(known, 0, 0);
+
+            try
+            {
+                MessageService.MarkAsRead(UserSession.EffectiveId, partnerId);
+                // Собеседнику — чтобы галочки прочтения у него появились
+                // сразу, а не со следующей его сверкой.
+                SignalingClient.Instance.Send("read", partnerId, 0, "");
+            }
             catch { /* игнор */ }
 
             LoadMessages();
@@ -328,6 +589,11 @@ namespace PISMO.Views
                 return;
             }
 
+            // Сообщаем адресату сразу. Без этого он узнает о сообщении своим
+            // опросом — через несколько секунд.
+            try { SignalingClient.Instance.Send("new_message", _currentPartnerId, 0, ""); }
+            catch { }
+
             TxtMessage.Text = "";
             ClearAttachment();
             LoadMessages();
@@ -410,6 +676,11 @@ namespace PISMO.Views
         private void BtnLogout_Click(object sender, RoutedEventArgs e)
         {
             _pollTimer.Stop();
+            _presenceTimer.Stop();
+            // «Не в сети» — ДО закрытия сокета: после него отправлять уже
+            // некуда, и собеседники ждали бы таймаута, глядя на зелёную точку.
+            try { PresenceService.MarkOffline(); } catch { }
+            DisconnectSignaling();
             UserSession.Clear();
             Close(); // LoginWindow снова покажется (см. LoginWindow.BtnLogin_Click)
         }
