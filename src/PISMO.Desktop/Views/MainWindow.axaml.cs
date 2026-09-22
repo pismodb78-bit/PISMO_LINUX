@@ -776,13 +776,9 @@ namespace PISMO.Views
                 // Говорим ровно то, чего не хватает и как это поставить:
                 // «не удалось записать» отправило бы человека гадать.
                 await Dialogs.Error(this,
-                    "Не найден arecord — записывать нечем.
-
-" +
-                    "Он входит в alsa-utils:
-" +
-                    "  Arch:   sudo pacman -S alsa-utils
-" +
+                    "Не найден arecord — записывать нечем.\n\n" +
+                    "Он входит в alsa-utils:\n" +
+                    "  Arch:   sudo pacman -S alsa-utils\n" +
                     "  Debian: sudo apt install alsa-utils",
                     "Голосовое сообщение");
                 return;
@@ -801,7 +797,7 @@ namespace PISMO.Views
             _voiceTimer.Tick += (_, _) =>
             {
                 var t = _voice?.Elapsed ?? TimeSpan.Zero;
-                BtnVoice.Content = $"⏹ {t:mm\:ss}";
+                BtnVoice.Content = $"⏹ {t:mm\\:ss}";
             };
             _voiceTimer.Start();
             BtnVoice.Content = "⏹ 00:00";
@@ -868,13 +864,9 @@ namespace PISMO.Views
                 if (!PISMO.Media.VoiceNote.CanPlay)
                 {
                     await Dialogs.Error(this,
-                        "Не найден aplay — проигрывать нечем.
-
-" +
-                        "Он входит в alsa-utils:
-" +
-                        "  Arch:   sudo pacman -S alsa-utils
-" +
+                        "Не найден aplay — проигрывать нечем.\n\n" +
+                        "Он входит в alsa-utils:\n" +
+                        "  Arch:   sudo pacman -S alsa-utils\n" +
                         "  Debian: sudo apt install alsa-utils",
                         "Голосовое сообщение");
                     return;
