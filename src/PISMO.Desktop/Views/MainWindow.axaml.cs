@@ -662,7 +662,7 @@ namespace PISMO.Views
                         new System.Globalization.CultureInfo("ru-RU"));
                     if (date != lastDate)
                     {
-                        MessagesPanel.Children.Add(BuildDateSeparator(date));
+                        MessagesPanel.Children.Add(MessageView.DateSeparator(date));
                         lastDate = date;
                     }
                     MessagesPanel.Children.Add(BuildBubble(m));
@@ -679,208 +679,29 @@ namespace PISMO.Views
             }
         }
 
-        private Control BuildDateSeparator(string date)
+        /// <summary>
+        /// Пузырь сообщения. Рисует MessageView — он же рисует переписку в
+        /// каналах серверов; здесь только то, что в личной переписке и группе
+        /// значит своё.
+        /// </summary>
+        private Control BuildBubble(ChatMessage m) => MessageView.Build(m, new MessageView.Actions
         {
-            return new Border
+            // В группе отправителей много — имя нужно; в личной переписке
+            // собеседник один, и подпись над каждым сообщением только мешает.
+            ShowSender = InGroup,
+            // Прочтений у групп нет: в group_messages нет колонки is_read.
+            ShowReadMarks = !InGroup,
+            Reply = StartReply,
+            Pin = TogglePin,
+            Copy = async msg =>
             {
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 8),
-                Child = new TextBlock
-                {
-                    Text = date, FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#72767d")),
-                },
-            };
-        }
-
-        private Control BuildBubble(ChatMessage m)
-        {
-            var content = new StackPanel { Spacing = 6 };
-
-            // Удалённое показываем как след, а не прячем: иначе ответы на него
-            // начинают ссылаться в пустоту, и в переписке молча образуется
-            // дыра. На ПК сделано так же.
-            if (m.IsDeleted)
-            {
-                content.Children.Add(new TextBlock
-                {
-                    Text = "сообщение удалено",
-                    FontStyle = FontStyle.Italic, FontSize = 13,
-                    Foreground = new SolidColorBrush(Color.Parse("#72767d")),
-                });
-                return WrapBubble(m, content, muted: true);
-            }
-
-            // Цитата того, на что отвечают.
-            if (m.ReplyToId > 0)
-            {
-                var quote = new StackPanel { Spacing = 1 };
-                quote.Children.Add(new TextBlock
-                {
-                    Text = string.IsNullOrWhiteSpace(m.ReplyToSender) ? "сообщение" : m.ReplyToSender,
-                    FontSize = 11, FontWeight = FontWeight.SemiBold,
-                    Foreground = new SolidColorBrush(
-                        m.IsMine ? Color.Parse("#d0d3ff") : Color.Parse("#a0a7b4")),
-                });
-                quote.Children.Add(new TextBlock
-                {
-                    Text = string.IsNullOrWhiteSpace(m.ReplyToText) ? "вложение" : m.ReplyToText,
-                    FontSize = 12, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis,
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(
-                        m.IsMine ? Color.Parse("#c7cbff") : Color.Parse("#8e939c")),
-                });
-                content.Children.Add(new Border
-                {
-                    // Полоска слева — как в любом мессенджере: она отделяет
-                    // цитату от самого сообщения без лишней рамки.
-                    BorderBrush = new SolidColorBrush(
-                        m.IsMine ? Color.Parse("#ffffff") : Color.Parse("#5865F2")),
-                    BorderThickness = new Thickness(3, 0, 0, 0),
-                    Padding = new Thickness(8, 2, 0, 2),
-                    Child = quote,
-                });
-            }
-
-            if (m.HasImage)
-            {
-                try
-                {
-                    using var ms = new MemoryStream(m.ImageData);
-                    var bmp = new Bitmap(ms);
-                    content.Children.Add(new Image
-                    {
-                        Source = bmp, MaxWidth = 320, MaxHeight = 320,
-                        Stretch = Stretch.Uniform,
-                        HorizontalAlignment = HorizontalAlignment.Left,
-                    });
-                }
-                catch { /* нечитабельное изображение — пропускаем */ }
-            }
-
-            if (!string.IsNullOrEmpty(m.Text))
-            {
-                content.Children.Add(new TextBlock
-                {
-                    Text = m.Text, TextWrapping = TextWrapping.Wrap,
-                    Foreground = m.IsMine ? Brushes.White : new SolidColorBrush(Color.Parse("#dcddde")),
-                    FontSize = 14,
-                });
-            }
-
-            // Файл — кнопкой: сами байты лежат в базе и тянутся только когда
-            // на неё нажали, иначе каждая отрисовка переписки качала бы все
-            // когда-либо присланные файлы.
-            if (m.HasFile)
-            {
-                var save = new Button
-                {
-                    Content = $"📎 {(string.IsNullOrWhiteSpace(m.FileName) ? "файл" : m.FileName)}" +
-                              $"  ·  {HumanSize(m.FileSize)}",
-                    Background = new SolidColorBrush(
-                        m.IsMine ? Color.Parse("#4752c4") : Color.Parse("#40444b")),
-                    Foreground = Brushes.White,
-                    Cursor = new Cursor(StandardCursorType.Hand),
-                    Padding = new Thickness(10, 6),
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                };
-                int fileId = m.Id;
-                string fileName = m.FileName;
-                save.Click += async (_, _) => await SaveAttachment(fileId, fileName);
-                content.Children.Add(save);
-            }
-
-            var meta = new StackPanel
-            {
-                Orientation = Orientation.Horizontal, Spacing = 5,
-                HorizontalAlignment = HorizontalAlignment.Right,
-            };
-            var metaBrush = new SolidColorBrush(
-                m.IsMine ? Color.Parse("#d0d3ff") : Color.Parse("#72767d"));
-
-            if (m.IsPinned)
-                meta.Children.Add(new TextBlock { Text = "📌", FontSize = 10, Foreground = metaBrush });
-            if (m.IsEdited)
-                meta.Children.Add(new TextBlock
-                {
-                    Text = "изменено", FontSize = 10, FontStyle = FontStyle.Italic, Foreground = metaBrush,
-                });
-            meta.Children.Add(new TextBlock
-            {
-                Text = m.CreatedAt.ToString("HH:mm"), FontSize = 10, Foreground = metaBrush,
-            });
-            // Галочка прочтения — только на своих: у чужих она бессмысленна.
-            if (m.IsMine)
-                meta.Children.Add(new TextBlock
-                {
-                    Text = m.IsRead ? "✓✓" : "✓", FontSize = 10, Foreground = metaBrush,
-                });
-            content.Children.Add(meta);
-
-            return WrapBubble(m, content, muted: false);
-        }
-
-        /// <summary>Общая оболочка пузыря — фон, скругление, меню действий.</summary>
-        private Control WrapBubble(ChatMessage m, Control content, bool muted)
-        {
-            var bubble = new Border
-            {
-                Background = new SolidColorBrush(muted
-                    ? Color.Parse("#292b2f")
-                    : (m.IsMine ? Color.Parse("#5865F2") : Color.Parse("#2f3136"))),
-                CornerRadius = new CornerRadius(12),
-                Padding = new Thickness(12, 8),
-                MaxWidth = 460,
-                Child = content,
-                HorizontalAlignment = m.IsMine ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-            };
-            if (!muted) bubble.ContextMenu = BuildMessageMenu(m);
-            return bubble;
-        }
-
-        /// <summary>Меню сообщения: ответить, закрепить, изменить, удалить.</summary>
-        private ContextMenu BuildMessageMenu(ChatMessage m)
-        {
-            var menu = new ContextMenu();
-            var items = new List<Control>();
-
-            var reply = new MenuItem { Header = "Ответить" };
-            reply.Click += (_, _) => StartReply(m);
-            items.Add(reply);
-
-            if (!string.IsNullOrEmpty(m.Text))
-            {
-                var copy = new MenuItem { Header = "Копировать текст" };
-                copy.Click += async (_, _) =>
-                {
-                    var cb = GetTopLevel(this)?.Clipboard;
-                    if (cb != null) await cb.SetTextAsync(m.Text);
-                };
-                items.Add(copy);
-            }
-
-            var pin = new MenuItem { Header = m.IsPinned ? "Открепить" : "Закрепить" };
-            pin.Click += (_, _) => TogglePin(m);
-            items.Add(pin);
-
-            // Править и удалять можно только своё — это же условие стоит и в
-            // самом UPDATE, чтобы отсутствие пункта в меню не было
-            // единственной защитой.
-            if (m.IsMine)
-            {
-                items.Add(new Separator());
-
-                var edit = new MenuItem { Header = "Изменить" };
-                edit.Click += async (_, _) => await EditMessage(m);
-                items.Add(edit);
-
-                var del = new MenuItem { Header = "Удалить" };
-                del.Click += async (_, _) => await DeleteMessage(m);
-                items.Add(del);
-            }
-
-            menu.ItemsSource = items;
-            return menu;
-        }
+                var cb = GetTopLevel(this)?.Clipboard;
+                if (cb != null) await cb.SetTextAsync(msg.Text);
+            },
+            Edit = async msg => await EditMessage(msg),
+            Delete = async msg => await DeleteMessage(msg),
+            SaveFile = async msg => await SaveAttachment(msg.Id, msg.FileName),
+        });
 
         // ─────────────── Действия над сообщением ───────────────
 
@@ -1018,15 +839,6 @@ namespace PISMO.Views
             catch { }
         }
 
-        private static string HumanSize(long bytes)
-        {
-            if (bytes < 1024) return bytes + " Б";
-            double kb = bytes / 1024.0;
-            return kb > 1024
-                ? string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.0} МБ", kb / 1024.0)
-                : (int)kb + " КБ";
-        }
-
         // ─────────────── Отправка ───────────────
         private void SendCurrent()
         {
@@ -1119,8 +931,8 @@ namespace PISMO.Views
                 if (data.Length > MaxAttachmentBytes)
                 {
                     await Dialogs.Error(this,
-                        $"Файл {HumanSize(data.Length)} — это больше предела в " +
-                        $"{HumanSize(MaxAttachmentBytes)}.\n\n" +
+                        $"Файл {MessageView.HumanSize(data.Length)} — это больше предела в " +
+                        $"{MessageView.HumanSize(MaxAttachmentBytes)}.\n\n" +
                         "Вложение хранится целиком в базе, и файлы такого размера " +
                         "она не принимает.");
                     return;
@@ -1130,7 +942,7 @@ namespace PISMO.Views
                 _pendingImageName = file.Name;
                 _pendingIsImage = IsImageName(file.Name);
                 AttachName.Text = (_pendingIsImage ? "🖼 " : "📎 ") + file.Name
-                                  + "  ·  " + HumanSize(data.Length);
+                                  + "  ·  " + MessageView.HumanSize(data.Length);
                 AttachPreview.IsVisible = true;
             }
             catch (Exception ex)
