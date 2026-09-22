@@ -105,6 +105,14 @@ namespace PISMO.Views
             BtnAttach.Click += async (_, _) => await PickAttachment();
             BtnAttachCancel.Click += (_, _) => ClearAttachment();
             BtnReplyCancel.Click += (_, _) => CancelReply();
+            BtnSearch.Click += (_, _) => ToggleSearch();
+            BtnSearchClose.Click += (_, _) => CloseSearch();
+            SearchInput.KeyUp += (_, e) =>
+            {
+                if (e.Key == Key.Escape) { CloseSearch(); return; }
+                LoadMessages();
+            };
+            BtnBlock.Click += async (_, _) => await ToggleBlock();
             BtnVoice.Click += async (_, _) => await ToggleVoiceNote();
             BtnCircle.Click += async (_, _) => await RecordCircle();
             BtnNewGroup.Click += async (_, _) =>
@@ -726,6 +734,13 @@ namespace PISMO.Views
             if (_presence.TryGetValue(partnerId, out int known))
                 ShowPeerStatus(known, 0, 0);
 
+            // Поиск относился к прежней переписке — закрываем, не показывая
+            // чужие совпадения под новым именем.
+            SearchBar.IsVisible = false;
+            SearchInput.Text = "";
+            BtnSearch.IsVisible = true;
+            RefreshBlockState();
+
             try
             {
                 MessageService.MarkAsRead(UserSession.EffectiveId, partnerId);
@@ -755,6 +770,12 @@ namespace PISMO.Views
             BtnAudioCall.IsVisible = false;
             BtnVideoCall.IsVisible = false;
             BtnMembers.IsVisible = true;
+            BtnSearch.IsVisible = true;
+            BtnBlock.IsVisible = false;
+            SearchBar.IsVisible = false;
+            SearchInput.Text = "";
+            TxtMessage.IsEnabled = true;
+            TxtMessage.Watermark = "Введите сообщение…";
             CancelReply();
 
             // Открыли — значит прочитали до этого места.
@@ -789,6 +810,19 @@ namespace PISMO.Views
                 var messages = InGroup
                     ? GroupService.GetMessages(_currentGroupId)
                     : MessageService.GetMessages(UserSession.EffectiveId, _currentPartnerId);
+
+                // Поиск фильтрует уже прочитанное, а не ходит в базу заново:
+                // переписка целиком у нас в руках, а лишний запрос на каждую
+                // набранную букву — это лишний запрос на каждую букву.
+                string needle = (SearchInput.Text ?? "").Trim();
+                if (SearchBar.IsVisible && needle.Length > 0)
+                {
+                    messages = messages.FindAll(x =>
+                        !string.IsNullOrEmpty(x.Text)
+                        && x.Text.Contains(needle, StringComparison.OrdinalIgnoreCase));
+                    SearchCount.Text = messages.Count == 0 ? "ничего" : $"{messages.Count} шт.";
+                }
+                else if (SearchBar.IsVisible) SearchCount.Text = "";
 
                 // Закрепы — одним запросом на всю переписку, а не по одному на
                 // сообщение: их единицы, а сообщений могут быть сотни.
@@ -852,6 +886,7 @@ namespace PISMO.Views
             Delete = async msg => await DeleteMessage(msg),
             SaveFile = async msg => await SaveAttachment(msg.Id, msg.FileName),
             PlayMedia = async (msg, circle) => await PlayMedia(msg, circle),
+            Forward = async msg => await ForwardMessage(msg),
             Reactions = msg => _reactions.TryGetValue(msg.Id, out var r) ? r : null,
             React = (msg, emoji) =>
             {
@@ -863,6 +898,157 @@ namespace PISMO.Views
         });
 
         private Dictionary<int, List<ReactionsService.Reaction>> _reactions = new();
+
+        // ─────────────── Пересылка ───────────────
+
+        /// <summary>
+        /// Пересылает сообщение в другой чат.
+        ///
+        /// Пересылаем ТЕКСТ и подпись «от кого», а не ссылку на исходное
+        /// сообщение. Ссылка выглядела бы аккуратнее, но указывала бы в чат,
+        /// куда у получателя может не быть доступа вовсе, — и он увидел бы
+        /// пустоту вместо сообщения. Вложения не идут: копировать мегабайты
+        /// между строками таблицы ради пересылки — не то, за что стоит
+        /// платить.
+        /// </summary>
+        private async System.Threading.Tasks.Task ForwardMessage(ChatMessage m)
+        {
+            if (string.IsNullOrWhiteSpace(m.Text))
+            {
+                await Dialogs.Info(this,
+                    "Пересылать нечего: в сообщении только вложение, а вложения " +
+                    "не пересылаются — их пришлось бы копировать целиком.",
+                    "Пересылка");
+                return;
+            }
+
+            var targets = new List<(string label, Action send)>();
+            int me = UserSession.EffectiveId;
+            string body = $"↪ от {(m.IsMine ? "меня" : m.SenderName)}:\n{m.Text}";
+
+            try
+            {
+                foreach (var g in GroupService.GetGroups(me))
+                {
+                    int gid = g.Id;
+                    targets.Add(("# " + g.Name, () => GroupService.Send(gid, me, body, null)));
+                }
+                foreach (var c in MessageService.GetConversations(me))
+                {
+                    int uid = c.PartnerId;
+                    targets.Add((c.Name, () => MessageService.SendMessage(me, uid, body, null)));
+                }
+            }
+            catch (Exception ex)
+            {
+                await Dialogs.Error(this, "Не удалось получить список чатов: " + ex.Message);
+                return;
+            }
+
+            if (targets.Count == 0)
+            {
+                await Dialogs.Info(this, "Переслать некуда — нет ни одного чата.", "Пересылка");
+                return;
+            }
+
+            var labels = new List<string>();
+            foreach (var t in targets) labels.Add(t.label);
+            string pick = await Dialogs.Choose(this, "Куда переслать", labels);
+            if (pick == null) return;
+
+            foreach (var t in targets)
+                if (t.label == pick)
+                {
+                    try { t.send(); }
+                    catch (Exception ex)
+                    {
+                        await Dialogs.Error(this, "Не удалось переслать: " + ex.Message);
+                        return;
+                    }
+                    break;
+                }
+
+            LoadConversations();
+            LoadMessages();
+        }
+
+        // ─────────────── Поиск по переписке ───────────────
+
+        private void ToggleSearch()
+        {
+            if (SearchBar.IsVisible) { CloseSearch(); return; }
+            SearchBar.IsVisible = true;
+            SearchInput.Text = "";
+            SearchCount.Text = "";
+            SearchInput.Focus();
+        }
+
+        private void CloseSearch()
+        {
+            SearchBar.IsVisible = false;
+            SearchInput.Text = "";
+            // Лента была отфильтрована — возвращаем её целиком.
+            LoadMessages();
+        }
+
+        // ─────────────── Блокировка ───────────────
+
+        private bool _iBlocked;
+
+        /// <summary>
+        /// Пересчитывает состояние блокировки и приводит к нему кнопку и
+        /// возможность писать. Вызывается при открытии переписки.
+        /// </summary>
+        private void RefreshBlockState()
+        {
+            if (InGroup || _currentPartnerId < 0)
+            {
+                BtnBlock.IsVisible = false;
+                TxtMessage.IsEnabled = true;
+                return;
+            }
+
+            int peer = _currentPartnerId;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var (mine, theirs) = BlocksService.State(UserSession.EffectiveId, peer);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (peer != _currentPartnerId) return;
+                    _iBlocked = mine;
+                    BtnBlock.IsVisible = true;
+                    BtnBlock.Content = mine ? "🔓" : "🚫";
+                    ToolTip.SetTip(BtnBlock, mine ? "Разблокировать" : "Заблокировать");
+
+                    // Писать нельзя в обе стороны. Оставить поле рабочим
+                    // значило бы дать человеку писать в пустоту и ждать
+                    // ответа, которого не будет.
+                    bool blocked = mine || theirs;
+                    TxtMessage.IsEnabled = !blocked;
+                    TxtMessage.Watermark = mine
+                        ? "Вы заблокировали этого человека"
+                        : theirs ? "Этот человек вас заблокировал"
+                                 : "Введите сообщение…";
+                });
+            });
+        }
+
+        private async System.Threading.Tasks.Task ToggleBlock()
+        {
+            if (InGroup || _currentPartnerId < 0) return;
+            int peer = _currentPartnerId;
+
+            if (!_iBlocked && !await Dialogs.Confirm(this,
+                    $"Заблокировать «{_currentPartnerName}»?\n\n" +
+                    "Вы перестанете получать сообщения от этого человека, " +
+                    "и он не сможет вам написать.",
+                    "Блокировка", "Заблокировать", "Отмена"))
+                return;
+
+            if (_iBlocked) BlocksService.Unblock(UserSession.EffectiveId, peer);
+            else BlocksService.Block(UserSession.EffectiveId, peer);
+            RefreshBlockState();
+        }
 
         // ─────────────── Голосовые и кружки ───────────────
 

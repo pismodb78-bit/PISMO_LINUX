@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -39,6 +40,9 @@ namespace PISMO.Views
 
             /// <summary>Поставить или снять реакцию.</summary>
             public Action<ChatMessage, string> React;
+
+            /// <summary>Переслать сообщение в другой чат.</summary>
+            public Action<ChatMessage> Forward;
 
             /// <summary>Реакции этого сообщения — уже посчитанные.</summary>
             public Func<ChatMessage, List<ReactionsService.Reaction>> Reactions;
@@ -127,12 +131,7 @@ namespace PISMO.Views
             }
 
             if (!string.IsNullOrEmpty(m.Text))
-                content.Children.Add(new TextBlock
-                {
-                    Text = m.Text, TextWrapping = TextWrapping.Wrap,
-                    Foreground = m.IsMine ? Brushes.White : new SolidColorBrush(Color.Parse("#dcddde")),
-                    FontSize = 14,
-                });
+                content.Children.Add(TextWithMentions(m));
 
             // Файл — кнопкой: сами байты лежат в базе и тянутся только когда
             // на неё нажали, иначе каждая отрисовка переписки качала бы все
@@ -231,6 +230,65 @@ namespace PISMO.Views
             return Wrap(m, content, muted: false, a: a);
         }
 
+        /// <summary>
+        /// Текст сообщения с подсвеченными упоминаниями.
+        ///
+        /// Своё упоминание выделено ярче чужого: в группе на два десятка
+        /// человек важно с одного взгляда понять, зовут тебя или кого-то
+        /// рядом. Разбор простой — @ и следующие за ним буквы, цифры,
+        /// подчёркивание и точка: ровно то, из чего состоят логины.
+        /// </summary>
+        private static Control TextWithMentions(ChatMessage m)
+        {
+            var normal = m.IsMine ? Brushes.White : new SolidColorBrush(Color.Parse("#dcddde"));
+            var block = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = normal,
+                FontSize = 14,
+            };
+
+            string text = m.Text;
+            if (text.IndexOf('@') < 0) { block.Text = text; return block; }
+
+            // Сравниваем с ЛОГИНОМ, а не с отображаемым именем: упоминания
+            // пишутся через логин.
+            string myLogin = (UserSession.Login ?? "").Trim();
+            int pos = 0;
+            while (pos < text.Length)
+            {
+                int at = text.IndexOf('@', pos);
+                if (at < 0) { block.Inlines.Add(new Run(text.Substring(pos)) { Foreground = normal }); break; }
+
+                int end = at + 1;
+                while (end < text.Length
+                       && (char.IsLetterOrDigit(text[end]) || text[end] == '_' || text[end] == '.'))
+                    end++;
+
+                // «@» без имени — это просто символ, а не упоминание.
+                if (end == at + 1)
+                {
+                    block.Inlines.Add(new Run(text.Substring(pos, end - pos)) { Foreground = normal });
+                    pos = end;
+                    continue;
+                }
+
+                if (at > pos)
+                    block.Inlines.Add(new Run(text.Substring(pos, at - pos)) { Foreground = normal });
+
+                string mention = text.Substring(at, end - at);
+                bool mine = myLogin.Length > 0
+                            && string.Equals(mention.Substring(1), myLogin, StringComparison.OrdinalIgnoreCase);
+                block.Inlines.Add(new Run(mention)
+                {
+                    Foreground = new SolidColorBrush(mine ? Color.Parse("#faa61a") : Color.Parse("#8ea1e1")),
+                    FontWeight = mine ? FontWeight.Bold : FontWeight.SemiBold,
+                });
+                pos = end;
+            }
+            return block;
+        }
+
         private static Control Wrap(ChatMessage m, Control content, bool muted, Actions a)
         {
             var bubble = new Border
@@ -282,6 +340,13 @@ namespace PISMO.Views
                 }
                 react.ItemsSource = emojis;
                 items.Add(react);
+            }
+
+            if (a.Forward != null)
+            {
+                var fwd = new MenuItem { Header = "Переслать" };
+                fwd.Click += (_, _) => a.Forward(m);
+                items.Add(fwd);
             }
 
             if (a.Pin != null)

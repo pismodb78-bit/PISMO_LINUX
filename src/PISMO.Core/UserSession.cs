@@ -5,6 +5,13 @@ namespace PISMO
     {
         public static int    UserId       { get; set; } = 0;
         public static string UserName     { get; set; } = "";
+
+        /// <summary>
+        /// Логин — не то же самое, что имя. UserName это «Имя Фамилия» для
+        /// показа, а упоминания в сообщениях пишутся через логин (@ivanov),
+        /// и сравнивать их с отображаемым именем бессмысленно.
+        /// </summary>
+        public static string Login        { get; set; } = "";
         public static string Role         { get; set; } = "";   // "admin" | "teacher"
 
         // Для режима «войти за пользователя» (только admin)
@@ -21,6 +28,7 @@ namespace PISMO
         {
             UserId = 0;
             UserName = "";
+            Login = "";
             Role = "";
             StopImpersonating();
         }

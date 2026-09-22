@@ -60,6 +60,7 @@ namespace PISMO
 
                 DataRow row = dt.Rows[0];
                 UserSession.UserId = Convert.ToInt32(row["id"]);
+                UserSession.Login = login;
                 UserSession.UserName = $"{row["Name"]} {row["Surname"]}".Trim();
                 UserSession.Role = row["role"].ToString().ToLower();
                 if (string.IsNullOrWhiteSpace(UserSession.UserName))

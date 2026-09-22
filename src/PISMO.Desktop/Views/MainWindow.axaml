@@ -87,6 +87,12 @@
                         <Button x:Name="BtnVideoCall" Content="📹" ToolTip.Tip="Видеозвонок"
                                 Background="Transparent" Foreground="White" Cursor="Hand"
                                 FontSize="16" Padding="6" IsVisible="False" />
+                        <Button x:Name="BtnSearch" Content="🔍" ToolTip.Tip="Поиск по переписке"
+                                Background="Transparent" Foreground="White" Cursor="Hand"
+                                FontSize="16" Padding="6" IsVisible="False" />
+                        <Button x:Name="BtnBlock" Content="🚫" ToolTip.Tip="Заблокировать"
+                                Background="Transparent" Foreground="White" Cursor="Hand"
+                                FontSize="16" Padding="6" IsVisible="False" />
                         <Button x:Name="BtnMembers" Content="👥" ToolTip.Tip="Участники группы"
                                 Background="Transparent" Foreground="White" Cursor="Hand"
                                 FontSize="16" Padding="6" IsVisible="False" />
@@ -95,6 +101,20 @@
             </Border>
 
             <!-- Сообщения -->
+            <Border x:Name="SearchBar" Grid.Row="1" IsVisible="False"
+                    Background="{StaticResource BgInputBrush}" Padding="12,8"
+                    VerticalAlignment="Top" ZIndex="10">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBox x:Name="SearchInput" Grid.Column="0"
+                             Watermark="Что ищем в этой переписке…" Background="Transparent" />
+                    <TextBlock x:Name="SearchCount" Grid.Column="1" VerticalAlignment="Center"
+                               Margin="10,0" Foreground="{StaticResource TextMutedBrush}" FontSize="12" />
+                    <Button x:Name="BtnSearchClose" Grid.Column="2" Content="✕"
+                            Background="Transparent" Foreground="{StaticResource RedBrush}"
+                            Cursor="Hand" Padding="6" />
+                </Grid>
+            </Border>
+
             <ScrollViewer x:Name="MessagesScroll" Grid.Row="1"
                           HorizontalScrollBarVisibility="Disabled" Padding="18,12">
                 <StackPanel x:Name="MessagesPanel" Spacing="8" />
